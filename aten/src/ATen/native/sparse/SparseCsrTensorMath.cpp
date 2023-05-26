@@ -127,7 +127,7 @@
 #endif
 
 #if !AT_USE_MKL_SPARSE()
-#include <ATen/native/eigen/SparseBlas.h>
+#include <ATen/native/eigen/SparseBlasImpl.h>
 #endif
 
 #include <algorithm>
@@ -671,7 +671,7 @@ Tensor& addmm_out_sparse_compressed_cpu(
 
 #if !AT_USE_MKL_SPARSE()
   if (result.layout() != kStrided && mat1.layout() != kStrided && mat2.layout() != kStrided) {
-    at::native::eigen::sparse::addmm_out_sparse(mat1, mat2, result, alpha, beta);
+    sparse::impl::eigen::addmm_out_sparse(mat1, mat2, result, alpha, beta);
     return result;
   }
   // The custom impl addmm_out_sparse_csr_native_cpu only supports CSR @
