@@ -2,6 +2,7 @@ from typing import List
 
 import torch
 from torch.ao.quantization._pt2e.quantizer.quantizer import (
+    FixedQParamsQuantizationSpec,
     QuantizationAnnotation,
     QuantizationConfig,
     QuantizationSpec,
@@ -109,4 +110,16 @@ def _node_only_used_for_sym_size(node: Node, partition_nodes: List[Node]):
     return all(
         ((user not in partition_nodes) or _is_sym_size_node(user))
         for user in node.users
+
+def _get_fixed_qparams_0to1_qspec(qscheme: torch.qscheme) -> FixedQParamsQuantizationSpec:
+    """
+    For fixed qparams ops like sigmoid, ensure values fall within [0, 1].
+    """
+    return FixedQParamsQuantizationSpec(
+        dtype=torch.uint8,
+        scale=1.0 / 256.0,
+        zero_point=0,
+        quant_min=0,
+        quant_max=255,
+        qscheme=qscheme,
     )
