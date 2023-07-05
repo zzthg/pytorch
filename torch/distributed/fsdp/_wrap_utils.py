@@ -127,7 +127,7 @@ def _validate_frozen_params(
     root_module: nn.Module,
     modules_to_wrap: Set[nn.Module],
     ignored_params: Set[nn.Parameter],
-    use_orig_params: bool,
+    strict: bool,
 ):
     """
     This checks that, given ``modules_to_wrap``, each module would manage
@@ -135,77 +135,12 @@ def _validate_frozen_params(
     requirement is strict for ``use_orig_params=False`` (hard error) and highly
     recommended for ``use_orig_params=True`` (user warning).
     """
-    post_order_named_modules = _get_post_order_named_modules(root_module)
-    visited_modules: Set[nn.Module] = set()
-    for module_name, module in post_order_named_modules:
-        if module in modules_to_wrap:
-            param_to_fqn = _get_managed_param_to_fqn(
-                module, ignored_params, visited_modules, module_name
-            )
-            frozen_param_fqns: List[str] = []
-            frozen_param_numel = 0
-            nonfrozen_param_fqns: List[str] = []
-            nonfrozen_param_numel = 0
-            for param, fqn in param_to_fqn.items():
-                if param.requires_grad:
-                    nonfrozen_param_fqns.append(fqn)
-                    nonfrozen_param_numel += param.numel()
-                else:
-                    frozen_param_fqns.append(fqn)
-                    frozen_param_numel += param.numel()
-            if len(frozen_param_fqns) > 0 and len(nonfrozen_param_fqns) > 0:
-                msg = f"{module_name} has both parameters with requires_grad=True and False."
-                if use_orig_params:
-                    total_param_numel = frozen_param_numel + nonfrozen_param_numel
-                    msg += (
-                        " We do not recommend wrapping such modules since "
-                        "the gradient memory usage will be higher than expected "
-                        f"({total_param_numel} numel instead of {nonfrozen_param_numel} numel "
-                        "before sharding via reduce-scatter). "
-                    )
-                else:
-                    msg += " FSDP does not support wrapping such modules when use_orig_params=False. "
-                msg += "If possible, wrap the frozen parameters with FSDP separately.\n"
-                msg += (
-                    f"The following parameters have requires_grad=True:\n{nonfrozen_param_fqns}\n"
-                    f"The following parameters have requires_grad=False:\n{frozen_param_fqns}"
-                )
-                if use_orig_params:
-                    warnings.warn(msg)
-                else:
-                    raise ValueError(msg)
-
-
-def _get_post_order_named_modules(
-    root_module: nn.Module,
-) -> List[Tuple[str, nn.Module]]:
-    """
-    This returns the named modules following a post-order traversal, which is a
-    valid reverse topological sort. We achieve this using the reverse of a
-    stack-based DFS order instead of reversing ``root_module.named_modules()``
-    since the former gives the modules in registration order at each level in
-    the module tree (as opposed to the reverse), which allows us to error/warn
-    on the first registered module that violates the condition.
-
-    For example, consider the following module structure:
-        M(
-          S1(),
-          S2(
-            SS1(),
-            SS2(),
-          ),
-          S3(),
-        )
-    The reverse DFS order is [S1, SS1, SS2, S2, S3, M], while the reverse
-    ``named_modules()`` order is [S3, SS2, SS1, S2, S1, M].
-    """
     visited_modules = {root_module}
     stack = [("", root_module)]
-    # Append and reverse at the end for linear-time algorithm
-    reverse_post_order_named_modules: List[Tuple[str, nn.Module]] = []
+    topo_sorted_named_modules: List[Tuple[str, nn.Module]] = []
     while stack:
         module_name, module = stack.pop()
-        reverse_post_order_named_modules.append((module_name, module))
+        topo_sorted_named_modules.append((module_name, module))
         for child_module_name, child_module in module.named_children():
             if child_module is None:  # only for overrides of `named_children()`
                 continue
@@ -214,39 +149,60 @@ def _get_post_order_named_modules(
                 if module_name != "":
                     child_module_name = module_name + "." + child_module_name
                 stack.append((child_module_name, child_module))
-    post_order_named_modules = list(reversed(reverse_post_order_named_modules))
-    return post_order_named_modules
+    reverse_topo_sorted_modules = reversed(topo_sorted_named_modules)
+    visited_modules.clear()
+    for module_name, module in reverse_topo_sorted_modules:
+        if module in modules_to_wrap:
+            param_to_fqn = _get_param_to_fqn(
+                module, ignored_params, visited_modules, module_name
+            )
+            frozen_param_fqns: List[str] = []
+            nonfrozen_param_fqns: List[str] = []
+            for param, fqn in param_to_fqn.items():
+                if param.requires_grad:
+                    nonfrozen_param_fqns.append(fqn)
+                else:
+                    frozen_param_fqns.append(fqn)
+            if len(frozen_param_fqns) > 0 and len(nonfrozen_param_fqns) > 0:
+                msg = f"{module_name} has both parameters with requires_grad=True and False."
+                if strict:
+                    msg += " FSDP does not support wrapping such modules.\n"
+                else:
+                    msg += (
+                        " FSDP does not recommend wrapping such modules since "
+                        "the gradient memory usage will be higher than expected.\n"
+                    )
+                msg += (
+                    f"The following parameters have requires_grad=True:\n{nonfrozen_param_fqns}\n"
+                    f"The following parameters have requires_grad=False:\n{frozen_param_fqns}"
+                )
+                if strict:
+                    raise ValueError(msg)
+                else:
+                    warnings.warn(msg)
 
 
-def _get_managed_param_to_fqn(
-    module_to_wrap: nn.Module,
+def _get_param_to_fqn(
+    root_module: nn.Module,
     ignored_params: Set[nn.Parameter],
     visited_modules: Set[nn.Module],
     root_prefix: str,
 ) -> Dict[nn.Parameter, str]:
     """
-    This returns a dict that maps managed parameter to its FQN for the given
-    ``module_to_wrap``. The dict's keys are exactly the parameters that would
-    be managed by the module, where this is achieved by calling this function
-    on the modules to wrap in reverse topological order, destructively updating
-    ``visited_modules``, and not traversing into those modules. The FQNs are
-    prefixed from the root (via ``root_prefix``) to be more informative.
-
-    NOTE: This function is meant to be called pre-wrapping and iteratively in
-    reverse topological order to cover the full module tree. This differs from
-    the ``_get_param_to_fqn()`` function meant to be called post-wrapping and
-    on the full module tree in one shot. Given those differences, we do not try
-    to unify the two.
+    NOTE: This function differs from the ``_get_param_to_fqn()`` used for
+    ``rekey_optim_state_dict()``. Here, we rely on the keys in the dict
+    being exactly the parameters that would be managed by ``root_module`` given
+    ``visited_modules``, which depends on the target modules to wrap.
     """
     param_to_fqn: Dict[nn.Parameter, str] = {}
     # Run BFS (or any tree traversal works)
-    queue = collections.deque([(module_to_wrap, root_prefix)])
-    visited_modules.add(module_to_wrap)
+    queue = collections.deque([(root_module, root_prefix)])
+    visited_modules.add(root_module)
     while queue:
         module, prefix = queue.popleft()
         for param_name, param in module.named_parameters(recurse=False):
             if param not in ignored_params:
-                fqn = param_name if prefix == "" else prefix + "." + param_name
+                fqn = param_name if prefix == "str" else prefix + "." + param_name
                 param_to_fqn[param] = fqn
         for child_module_name, child_module in module.named_children():
             if child_module is None:  # only for overrides of `named_children()`
@@ -255,7 +211,7 @@ def _get_managed_param_to_fqn(
                 visited_modules.add(child_module)
                 child_prefix = (
                     child_module_name
-                    if prefix == ""
+                    if prefix == "str"
                     else prefix + "." + child_module_name
                 )
                 queue.append((child_module, child_prefix))
