@@ -381,9 +381,7 @@ def _init_core_state(
     ] = collections.defaultdict(None)
     state._fully_sharded_module_to_handle = _fully_sharded_module_to_handle
     # Invariant: `state.params` contains exactly the `FlatParameter`s of the
-    # handles in `state._handle`
-    _handle: FlatParamHandle = None
-    state._handle = _handle
+    # handles in `state._handles`
     params: List[FlatParameter] = []
     state.params = params
     return state
@@ -567,7 +565,6 @@ def _init_param_handles_from_module(
     # Reverse `_handle` to preserve depth-first `.modules()` order for
     # consistency with the wrapper path (namely, so that `_get_fsdp_handle()`
     # returns the same ordering for both paths).
-    state._handle.reverse()
     return state
 
 
@@ -592,9 +589,7 @@ def _init_param_handle_from_params(
         state._use_orig_params,
     )
     handle.shard()
-    assert not state._handle
     state.params.append(handle.flat_param)
-    state._handle = handle
     state._fully_sharded_module_to_handle[handle._fully_sharded_module] = handle
     cpu_device = torch.device("cpu")
     if state.cpu_offload.offload_params and handle.flat_param.device != cpu_device:

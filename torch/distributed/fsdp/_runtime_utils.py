@@ -244,7 +244,7 @@ def _share_state_and_init_handle_attrs(
     ``root_module`` 's module tree, and initializes handle attributes. These
     are done together to require a single loop over the states.
     """
-    handle = root_state._handle
+    handle = root_state._fully_sharded_module_to_handle.get(root_module, None)
     if handle:
         handle.init_flat_param_attributes()
     inter_node_state = _validate_and_get_hybrid_shard_state(root_module)
@@ -264,7 +264,8 @@ def _share_state_and_init_handle_attrs(
             attr_name_to_values[attr_name].add(getattr(fsdp_state, attr_name))
         if fsdp_state is root_state:
             continue
-        handle_sharding_strategy = _get_sharding_strategy(fsdp_state._handle)
+
+        handle_sharding_strategy = _get_sharding_strategy(handle)
         if handle_sharding_strategy in (
             HandleShardingStrategy.HYBRID_SHARD,
             HandleShardingStrategy._HYBRID_SHARD_ZERO2,
@@ -304,7 +305,6 @@ def _share_state_and_init_handle_attrs(
         fsdp_state._handles_prefetched = root_state._handles_prefetched
         fsdp_state._needs_pre_backward_unshard = root_state._needs_pre_backward_unshard
         fsdp_state._device_mesh = root_state._device_mesh
-        handle = fsdp_state._handle
         if handle:
             handle.init_flat_param_attributes()
     for attr_name, attr_values in attr_name_to_values.items():
@@ -441,14 +441,15 @@ def _pre_forward(
         if handle:
             handle._training_state = HandleTrainingState.FORWARD
         if unshard_fn is not None:
-            unshard_fn(state, handle)
+            unshard_fn()
         # Register post-backward hooks to reshard the parameters and reduce-scatter
         # their gradients. They must be re-registered every forward pass in case
         # the `grad_fn` is mutated.
         _register_post_backward_hooks(state, handle)
 
-        should_cast_forward_inputs = (
-            state._handle and not state._handle._force_full_precision
+        handle = state._fully_sharded_module_to_handle.get(module, None)
+        should_cast_forward_inputs = handle and all(
+            not handle._force_full_precision
         )
 
         if should_cast_forward_inputs and state.mixed_precision.cast_forward_inputs:
@@ -509,7 +510,7 @@ def _post_forward(
     with torch.profiler.record_function("FullyShardedDataParallel._post_forward"):
         state._exec_order_data.record_post_forward(handle)
         if reshard_fn is not None:
-            reshard_fn(state, handle)
+            reshard_fn()
         # Register pre-backward hooks to unshard the flat parameters for the
         # gradient computation (if needed)
         output = _register_pre_backward_hooks(state, module, output, handle)
@@ -573,7 +574,7 @@ def _root_pre_forward(
         # are in full precision and if we should cast them back to lower precision, which happens when
         # exiting eval() mode.
         should_cast_buffers_to_full_prec = False
-        handle = state._handle
+        handle = state._fully_sharded_module_to_handle.get(module, None)
         if handle and handle._force_full_precision:
             should_cast_buffers_to_full_prec = True
 
@@ -641,8 +642,7 @@ def _root_pre_forward(
 @no_type_check
 def _root_cast_forward_input(state: _FSDPState, args, kwargs) -> Tuple[Any, Any]:
     should_cast_forward_inputs = (
-        state._handle
-        and not state._handle._force_full_precision
+        all(not handle._force_full_precision for handle in state._fully_sharded_module_to_handle.values())
         and state.mixed_precision.cast_root_forward_inputs
     )
 
@@ -1031,17 +1031,18 @@ def _catch_all_reshard(
     # Wrap with a try-except to provide a more informative traceback if an
     # error is raised
     try:
-        if state._handle:
+        handles = state._handles._fully_sharded_module_to_handle()
+        if handles:
             # TODO: This already-resharded check is brittle:
             # https://github.com/pytorch/pytorch/issues/83956
             already_resharded = (
-                state._handle.flat_param.data_ptr()
-                == state._handle.flat_param._local_shard.data_ptr()
+                handles.flat_param.data_ptr()
+                == handles.flat_param._local_shard.data_ptr()
             )
             if already_resharded:
                 return
-            free_unsharded_flat_param = _should_free_in_backward(state, state._handle)
-            _reshard(state, state._handle, free_unsharded_flat_param)
+            free_unsharded_flat_param = _should_free_in_backward(state, handles)
+            _reshard(state, handles, free_unsharded_flat_param)
     except Exception as e:
         _p_assert(
             False,
@@ -1056,7 +1057,7 @@ def _finalize_params(
     state: _FSDPState,
 ) -> None:
     """Finalizes the parameters before the next iteration."""
-    handle = state._handle
+    handle = state._handles
     if not handle:
         return
     flat_param = handle.flat_param

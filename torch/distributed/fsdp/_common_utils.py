@@ -18,6 +18,8 @@ from typing import (
     Tuple,
 )
 
+from pyparsing import Iterable
+
 import torch
 import torch.distributed as dist
 import torch.distributed.fsdp.flat_param as flat_param_file
@@ -182,7 +184,7 @@ def _module_handle(state: _FSDPState, module: nn.Module) -> "FlatParamHandle":
         return state._fully_sharded_module_to_handle[module]
     else:
         # NOTE: This assumes `module` is a `FullyShardedDataParallel` instance.
-        return module._handle
+        return list(module._fully_sharded_module_to_handle.values())[0]
 
 
 @no_type_check
@@ -196,7 +198,6 @@ def _get_sharding_strategy(handle):
     Returns the sharding strategy of the handle.
     """
     return handle._sharding_strategy if handle else None
-
 
 def clean_tensor_name(tensor_name: str) -> str:
     """

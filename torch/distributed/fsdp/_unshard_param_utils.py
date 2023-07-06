@@ -135,7 +135,7 @@ def _validate_unshard_params_args(
             f"offload_to_cpu={offload_to_cpu} "
             f"is not supported yet"
         )
-    if offload_to_cpu and state._handle and (not state._handle.uses_sharded_strategy):
+    if offload_to_cpu and state._handles and (not state._handles.uses_sharded_strategy):
         raise NotImplementedError(
             "offload_to_cpu=True and NO_SHARD is not supported yet"
         )

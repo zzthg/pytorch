@@ -849,8 +849,8 @@ def _register_state_dict_hooks_base(
     if not _is_composable(state):
         getattr(state, hook_registration_fn_name)(hook, **hook_registration_fn_kwargs)
     else:
-        handle = state._handle
-        if handle:
-            getattr(handle._fully_sharded_module, hook_registration_fn_name)(
-                hook, **hook_registration_fn_kwargs
-            )
+        for handle in state._fully_sharded_module_to_handle.values():
+            if handle:
+                getattr(handle._fully_sharded_module, hook_registration_fn_name)(
+                    hook, **hook_registration_fn_kwargs
+                )

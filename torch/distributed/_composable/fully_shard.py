@@ -99,7 +99,7 @@ def fully_shard(
     _register_root_pre_forward_hook(state, module)  # prepend last
     for submodule in module.modules():
         if (
-            submodule in state._fully_sharded_module_to_handles
+            submodule in state._fully_sharded_module_to_handle
             and _get_module_state(submodule) is None
         ):
             _insert_module_state(submodule, state)

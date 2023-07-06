@@ -791,25 +791,24 @@ class FullyShardedDataParallel(nn.Module, _FSDPState):
         ):
             args, kwargs = _root_pre_forward(self, self, args, kwargs)
             unused = None
+            unshard_fn = functools.partial(_pre_forward_unshard, self, self._fully_sharded_module_to_handle[self._fsdp_wrapped_module])
+            reshard_fn = functools.partial(_post_forward_reshard, self, self._fully_sharded_module_to_handle[self._fsdp_wrapped_module])
             args, kwargs = _pre_forward(
                 self,
-                self._handle,
-                _pre_forward_unshard,
+                self._fully_sharded_module_to_handle[self._fsdp_wrapped_module],
+                unshard_fn,
                 self._fsdp_wrapped_module,
                 args,
                 kwargs,
             )
-            handle = self._handle
-            if handle:
+            for handle in self._handles:
                 _p_assert(
                     handle.flat_param.device == self.compute_device,
                     "Expected `FlatParameter` to be on the compute device "
                     f"{self.compute_device} but got {handle.flat_param.device}",
                 )
             output = self._fsdp_wrapped_module(*args, **kwargs)
-            return _post_forward(
-                self, self._handle, _post_forward_reshard, self, unused, output
-            )
+            return _post_forward(self, self._fully_sharded_module_to_handle[self._fsdp_wrapped_module], reshard_fn, self, unused, output)
 
     @staticmethod
     @contextlib.contextmanager
