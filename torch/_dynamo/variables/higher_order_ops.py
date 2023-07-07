@@ -59,6 +59,7 @@ def speculate_subgraph(
     tx,
     f,
     sub_args,
+    sub_kwargs,
     graph_checkpoint,
     checkpoint,
     *,
@@ -70,7 +71,7 @@ def speculate_subgraph(
 
     try:
         with tx.output.new_subtracer() as tracer:
-            args = []
+            # args = []
             # One argument to graph per sub_args
             for a in sub_args:
                 assert not isinstance(
@@ -87,27 +88,27 @@ def speculate_subgraph(
                     tracer.create_graph_input("const")
                     # Ensures that we recompile when the constant value changes
                     a.add_guard(GuardBuilder.CONSTANT_MATCH)
-                    new_arg = a
+                    # new_arg = a
                 elif isinstance(a, TensorVariable):
                     new_proxy = tracer.create_graph_input(a.as_proxy().node.name)
                     example_value = a.as_proxy().node.meta["example_value"]
-                    new_arg = wrap_fx_proxy(
-                        tx=tx, proxy=new_proxy, example_value=example_value
-                    )
+                    # new_arg = wrap_fx_proxy(
+                    #     tx=tx, proxy=new_proxy, example_value=example_value
+                    # )
                 elif isinstance(a, AutogradFunctionContextVariable):
                     tracer.create_graph_input(a.as_proxy().node.name)
-                    new_arg = a
+                    # new_arg = a
                 else:
                     raise unimplemented(
                         "HigherOrderOperator with body that accepts non-Tensors as input"
                     )
-                args.append(new_arg)
+                # args.append(new_arg)
 
             autograd_ctx = (
                 dynamo_enable_grad(tx) if enable_grad else contextlib.nullcontext()
             )
             with autograd_ctx:
-                output = f.call_function(tx, args, {})
+                output = f.call_function(tx, sub_args, sub_kwargs)
 
             # Register output to graph
             # Modeled off of compile_and_call_fx_graph
@@ -774,9 +775,8 @@ class WrapHigherOrderVariable(TorchHigherOrderOperatorVariable):
         ) = speculate_subgraph(
             tx,
             args[0],
-            [
-                *args[1:],
-            ],
+            list(args[1:]),
+            kwargs,
             graph_checkpoint,
             checkpoint,
         )
@@ -799,8 +799,8 @@ class WrapHigherOrderVariable(TorchHigherOrderOperatorVariable):
             lambda a: a.node.meta["example_value"],
             body_r.as_proxy(),
         )
-        _, p_kwargs = proxy_args_kwargs([], kwargs)
-        return p_args, p_kwargs, example_value
+        #_, p_kwargs = proxy_args_kwargs([], kwargs)
+        return p_args, {}, example_value
 
     def call_function(
         self, tx, args: "List[VariableTracker]", kwargs: "Dict[str, VariableTracker]"
@@ -808,7 +808,7 @@ class WrapHigherOrderVariable(TorchHigherOrderOperatorVariable):
         from . import ConstantVariable
         from .builder import wrap_fx_proxy
 
-        self.check_kwargs(kwargs, ConstantVariable)
+        # self.check_kwargs(kwargs, ConstantVariable)
 
         p_args, p_kwargs, example_value = self.create_wrapped_node(tx, args, kwargs)
 
