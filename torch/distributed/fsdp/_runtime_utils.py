@@ -225,7 +225,7 @@ def _init_device_mesh(
     device_mesh = DeviceMesh(device_type, mesh_tensor, _init_process_groups=False)
     device_mesh._dim_group_infos = (
         _get_group_tag(root_state.process_group),
-        mesh_tensor.tolist(),
+        mesh_tensor,
     )
     return device_mesh
 
