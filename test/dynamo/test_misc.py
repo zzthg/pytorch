@@ -6073,6 +6073,7 @@ def ___make_guard_fn():
         result = foo([x, x, x, x, y], y)
 
 
+# def test_set_data()
 
 class TestTracer(JitTestCase):
     def test_jit_save(self):
