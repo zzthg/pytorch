@@ -444,8 +444,8 @@ def _pre_forward_unshard(
         return
     # If the handles have been prefetched, then there is no need to call
     # `_unshard()` again
-    if not handle._prefetched:
-        _unshard(state, handle, state._unshard_stream, state._pre_unshard_stream)
+    if not state._handles_prefetched.get(handle, False):
+        _unshard(state, handle, state._streams_unshard, state._streams_pre_unshard)
     handle._needs_pre_forward_unshard = False
     state._device_handle.current_stream().wait_stream(state._unshard_stream)
     with torch.profiler.record_function(
@@ -594,10 +594,12 @@ def _root_pre_forward(
         if state.forward_prefetch:
             handles = []
             for fsdp_state in state._all_fsdp_states:
-                if fsdp_state._handle:
-                    handles.append(fsdp_state._handle)
-            for handle in handles:
-                handle._needs_pre_forward_unshard = True
+                # TODO: Forward prefetch assumes singleton handles key. For the
+                # composable path, `_handles` may have more than one handle,
+                # whereas for the wrapper path, it has at most one handle.
+                handles_keys.extend((handle,) for handle in fsdp_state._handles)
+            for handles_key in handles_keys:
+                handles_key._needs_pre_forward_unshard = True
         _wait_for_computation_stream(
             state._device_handle.current_stream(),
             state._unshard_stream,
@@ -1183,27 +1185,23 @@ def _get_handle_to_prefetch(
         training_state == HandleTrainingState.BACKWARD_POST
         and state.backward_prefetch == BackwardPrefetch.BACKWARD_POST
     ):
-        target_handle_candidate = eod.get_handle_to_backward_prefetch(current_handle)
-        if (
-            target_handle_candidate
-            and target_handle_candidate._needs_pre_backward_unshard
-            and not target_handle_candidate._prefetched
-        ):
-            target_handle = target_handle_candidate
+        target_handles_key_candidate = eod.get_handle_to_backward_prefetch(
+            current_handles_key
+        )
+        if target_handles_key_candidate._needs_pre_backward_unshard and not state._handles_prefetched.get(target_handles_key_candidate, False):
+            target_handles_key = target_handles_key_candidate
         else:
-            target_handle = None
+            target_handles_key = None
     elif training_state == HandleTrainingState.FORWARD and state.forward_prefetch:
-        target_handle_candidate = eod.get_handle_to_forward_prefetch(current_handle)
-        if (
-            target_handle_candidate
-            and target_handle_candidate._needs_pre_forward_unshard
-            and not target_handle_candidate._prefetched
-        ):
-            target_handle = target_handle_candidate
+        target_handles_key_candidate = eod.get_handle_to_forward_prefetch(
+            current_handles_key
+        )
+        if target_handles_key_candidate._needs_pre_forward_unshard and not state._handles_prefetched.get(target_handles_key_candidate, False):
+            target_handles_key = target_handles_key_candidate
         else:
-            target_handle = None
+            target_handles_key = None
 
-    return target_handle
+    return target_handles_key
 
 
 def _get_training_state(
