@@ -689,7 +689,8 @@ class TestDynamoDTensor(torch._dynamo.test_case.TestCase):
             gm.print_readable()
             return gm
 
-        opt_fn = torch._dynamo.optimize(grab_graph_backend, nopython=True)(fn)
+        # opt_fn = torch._dynamo.optimize(grab_graph_backend, nopython=True)(fn)
+        opt_fn = torch.compile(fn, fullgraph=True)
         x = torch.ones(1)
         ref = fn(x)
         res = opt_fn(x)
