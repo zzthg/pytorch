@@ -267,7 +267,7 @@ def _share_state_and_init_handle_attrs(
         fsdp_state._pre_unshard_stream = root_state._pre_unshard_stream
         fsdp_state._default_stream = root_state._default_stream
         fsdp_state._exec_order_data = root_state._exec_order_data
-        # fsdp_state._free_event_queue = root_state._free_event_queue
+        fsdp_state._free_event_queue = root_state._free_event_queue
         fsdp_state._device_mesh = root_state._device_mesh
         handle = fsdp_state._handle
         if handle:
@@ -323,13 +323,13 @@ def _unshard(
         ran_pre_unshard = handle.pre_unshard()
     if ran_pre_unshard:
         unshard_stream.wait_stream(pre_unshard_stream)
-    # if state.limit_all_gathers:
-        # event = state._free_event_queue.dequeue_if_needed()
-        # if event:
-        #     with torch.profiler.record_function(
-        #         "FullyShardedDataParallel.rate_limiter"
-        #     ):
-        #         event.synchronize()
+    if state.limit_all_gathers:
+        event = state._free_event_queue.dequeue_if_needed()
+        if event:
+            with torch.profiler.record_function(
+                "FullyShardedDataParallel.rate_limiter"
+            ):
+                event.synchronize()
     with state._device_handle.stream(unshard_stream):
         handle.unshard()
         handle.post_unshard()
@@ -346,10 +346,10 @@ def _reshard(
     free the handle's padded unsharded flat parameter.
     """
     handle.reshard(free_unsharded_flat_param)
-    # if state.limit_all_gathers and free_unsharded_flat_param:
-        # free_event = state._device_handle.Event()
-        # free_event.record()
-        # state._free_event_queue.enqueue(free_event)
+    if state.limit_all_gathers and free_unsharded_flat_param:
+        free_event = state._device_handle.Event()
+        free_event.record()
+        state._free_event_queue.enqueue(free_event)
     handle.post_reshard()
     # Since we prefetch entire handles keys at a time, conservatively mark
     # the entire key as no longer prefetched once we free at least one
@@ -448,14 +448,10 @@ def _pre_forward_unshard(
         _unshard(state, handle, state._unshard_stream, state._pre_unshard_stream)
     handle._needs_pre_forward_unshard = False
     state._device_handle.current_stream().wait_stream(state._unshard_stream)
-<<<<<<< HEAD
     with torch.profiler.record_function(
         "FullyShardedDataParallel._pre_forward_prefetch"
     ):
         _prefetch_handle(state, handle, _PrefetchMode.FORWARD)
-=======
-    _prefetch_handle(state, handle, _PrefetchMode.FORWARD)
->>>>>>> 99ab0c4d04a... [WIP] Migrate tuple(handle) -> handle
 
 
 @no_type_check
@@ -1316,11 +1312,7 @@ def _register_pre_backward_hooks(
         handle._needs_pre_backward_unshard = False
         # Since these handles' `FlatParameter`s participated in a forward, we
         # conservatively assume that they will be used in the backward
-<<<<<<< HEAD
         handle._ran_pre_backward_hook = False
-=======
-        state._ran_pre_backward_hook[handle] = False
->>>>>>> 99ab0c4d04a... [WIP] Migrate tuple(handle) -> handle
 
     def _register_hook(t: torch.Tensor) -> torch.Tensor:
         if t.requires_grad:
