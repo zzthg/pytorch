@@ -152,6 +152,7 @@ FILENAME_ALLOWLIST |= set(
 # torch.func.grad: need to allow this file to be able to look at `grad_impl`
 FILENAME_ALLOWLIST |= {
     _module_dir(torch) + "_functorch/apis.py",
+    _module_dir(torch) + "custom_op.py",
 }
 
 SKIP_DIRS_RE = None

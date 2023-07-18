@@ -35,6 +35,7 @@ from .decomposition import decompositions, get_decompositions
 from .ir import (
     ExpandView,
     IndexingConstant,
+    CustomTriton,
     is_triton,
     ops_wrapper,
     PermuteView,
@@ -521,6 +522,16 @@ def to_dtype(x: TensorBox, dtype: torch.dtype):
         return ops.to_dtype(x, dtype)
 
     return make_pointwise(_to_dtype, override_return_dtype=dtype)(x)
+
+
+# @register_lowering(torch.ops.namespace.mul.default, type_promotion_kind=None)
+def something(x: TensorBox, y: TensorBox, n_elements: int, BLOCK_SIZE: int):
+    from torch.custom_op import op_to_kernel
+    triton_kernel, grid_fn, abstract_impl = op_to_kernel["namespace::mul"]
+    # TODO: somehow invoke the abstract_impl?
+    # TODO: Multiple Tensors? Do they need metadata?
+    return TensorBox.create(
+        CustomTriton("namespace::mul", [3], torch.float, torch.device("cuda:0")))
 
 
 @register_lowering(aten.view.dtype, type_promotion_kind=None)

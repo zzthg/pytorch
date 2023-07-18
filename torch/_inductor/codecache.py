@@ -761,6 +761,7 @@ class CudaKernelParamCache:
 
     @classmethod
     def set(cls, key, params, cubin):
+        import pdb; pdb.set_trace()
         _, path = write(cubin, "cubin", hash_type="cubin")
         params["cubin_path"] = path
         cls.cache[key] = params
@@ -776,6 +777,7 @@ class AotCodeCache:
 
     @classmethod
     def compile(cls, graph, source_code, cuda):
+        import pdb; pdb.set_trace()
         # TODO: update cpp_compile_command for different platforms
         picked_vec_isa = invalid_vec_isa if cuda else pick_vec_isa()
         cpp_command = repr(
@@ -1071,6 +1073,8 @@ class TritonCodeCache:
 def _worker_compile(kernel_name, source_code, cc, device):
     cuda_properties.set_compiler_worker_current_device(device)
     kernel = TritonCodeCache.load(kernel_name, source_code)
+    print(type(kernel))
+    print(kernel)
     kernel.precompile(warm_cache_only_with_cc=cc)
 
 
@@ -1193,6 +1197,22 @@ class AsyncCompile:
         if config.compile_threads <= 1 or len(seq) <= 1:
             return list(map(fn, seq))
         return [t.result() for t in [cls.pool().submit(fn, x) for x in seq]]
+
+    def custom_triton(self, fn):
+        import triton
+        from .triton_heuristics import CachingAutotuner
+        _compile_start()
+        # TODO: hook triton.autotune through this.
+        meta = {
+            'device': torch.device('cuda:0'),
+            # TODO: read schema and do FakeTensor prop
+            'signature': {0: '*fp32', 1: '*fp32', 2: '*fp32', 3: 'i32'},
+            # TODO: How do we extract the tl.constexpr?
+            'constants': {4: 1024},
+        }
+        kernel = CachingAutotuner(fn, meta, [triton.Config({})], None, None, None, None)
+        kernel.precompile()
+        return kernel
 
     def triton(self, kernel_name, source_code):
         _compile_start()

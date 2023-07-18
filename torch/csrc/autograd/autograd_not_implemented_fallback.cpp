@@ -106,6 +106,8 @@ static void basicAutogradNotImplementedFallbackImpl(
   const auto stack_start = stack->size() - num_arguments;
   const bool grad_mode = GradMode::is_enabled();
 
+  std::cout << op_name << std::endl;
+
   if (getAutogradFallbackMode() == AutogradFallbackMode::Nothing) {
     op.redispatchBoxed(dispatch_keys & c10::after_autograd_keyset, stack);
     return;

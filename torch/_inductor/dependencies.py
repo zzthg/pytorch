@@ -301,6 +301,7 @@ def extract_read_writes(
     normalize: bool = False,
     prefix: str = "d",
 ):
+    import pdb; pdb.set_trace()
     args, var_ranges = index_vars_squeeze(*argsizes, prefix=prefix)
     rw = RecordLoadStore(var_ranges, normalize=normalize)
     with V.set_ops_handler(rw):  # type: ignore[call-arg]

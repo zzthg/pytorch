@@ -301,6 +301,7 @@ def compile_fx_inner(
     compiled_graph: CompiledFxGraph = fx_codegen_and_compile(
         *graph_args, **graph_kwargs
     )
+    import pdb; pdb.set_trace()
 
     if aot_mode:
         return compiled_graph

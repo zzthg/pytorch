@@ -406,7 +406,6 @@ class Pointwise(Loops):
         loader = patch.object(ConstantBuffer, "override_device", device)(loader)
         return Pointwise(device, self.dtype, loader, self.ranges)
 
-
 @dataclasses.dataclass
 class Scatter(Pointwise):
     output_indexer: Callable[[List[Expr]], Expr]
@@ -2954,6 +2953,31 @@ class RandomSeeds(ExternKernelOut):
         )
 
 
+class CustomTriton(InputsKernel):
+    def __init__(self, opname, size, dtype, device):
+        self.opname = opname
+        self.size = size
+        self.dtype = dtype
+        self.device = device
+        self.layout = MultiOutputLayout(device=device)
+
+    def make_loader(self):
+        # TODO: get it
+        return torch.ops.namespace.mul.default
+
+    def get_origin_node(self):
+        return None
+
+    def get_size(self):
+        return self.size
+
+    def get_dtype(self):
+        return self.dtype
+
+    def get_device(self):
+        return self.device
+
+
 class ExternKernelAlloc(ExternKernel):
     def codegen(self, wrapper):
         args = [*self.codegen_args(), *self.codegen_kwargs()]
@@ -3175,7 +3199,6 @@ class FallbackKernel(ExternKernelAlloc):
             tuple(nontensor_args),
         )
         self.use_cpp_op_schema = False
-
         op_overload_packet = (
             kernel._overloadpacket
             if isinstance(kernel, torch._ops.OpOverload)
@@ -3277,6 +3300,22 @@ class FallbackKernel(ExternKernelAlloc):
     def codegen(self, wrapper):
         if self.use_cpp_op_schema:
             args = [*self.codegen_args(), *self.codegen_kwargs()]
+            from torch.custom_op import op_to_kernel
+            opname = self.kernel
+            if opname in op_to_kernel:
+                # TODO(rzou): don't hardcode
+                wrapper.header.splice("static CUfunction custom_triton_0 = nullptr;")
+                wrapper.writeline("at::Tensor buf0 = outputs[0];")
+                wrapper.writeline("if (custom_triton_0 == nullptr) {")
+                wrapper.writeline('  custom_triton_0 == loadKernel("TODO", "TODO");')
+                wrapper.writeline('}')
+                wrapper.writeline("CUdeviceptr var_0 = reinterpret_cast<CUdeviceptr>(arg0_1.data_ptr());")
+                wrapper.writeline("CUdeviceptr var_1 = reinterpret_cast<CUdeviceptr>(arg1_1.data_ptr());")
+                wrapper.writeline("CUdeviceptr var_2 = reinterpret_cast<CUdeviceptr>(buf0.data_ptr());")
+                wrapper.writeline("auto var_3 = 3;")
+                wrapper.writeline("void* kernel_args_var_0[] = {&var_0, &var_1, &var_2, &var_3};")
+                wrapper.writeline('launchKernel(custom_triton_0, 1, 1, 1, 1, 0, kernel_args_var_0, 0);')
+                return
             wrapper.generate_extern_kernel_alloc_and_find_schema_if_needed(
                 self.get_name(),
                 self.kernel,
@@ -3286,6 +3325,28 @@ class FallbackKernel(ExternKernelAlloc):
                 self.cpp_kernel_overlad_name,
             )
         else:
+            from torch.custom_op import op_to_kernel
+            opname = "::".join(self.kernel.split(".")[2:4])
+            if opname in op_to_kernel:
+                wrapper.header.splice(f"from torch.custom_op import op_to_kernel")
+                wrapper.header.splice(f"from torch._C import _cuda_getCurrentRawStream as get_cuda_stream")
+                # TODO: autogenerate kernel name
+                wrapper.header.splice(f"custom_triton_0 = async_compile.custom_triton(op_to_kernel['{opname}'][0])")
+                triton_kernel, grid_fn, abstract_impl = op_to_kernel[opname]
+                wrapper.writeline("from torch.custom_op import op_to_kernel")
+                wrapper.writeline(f"{self.get_name()}_out = op_to_kernel['{opname}'][2]({', '.join(self.codegen_args())})")
+                wrapper.writeline(f"{self.get_name()}_grid = op_to_kernel['{opname}'][1]({', '.join(self.codegen_args())})")
+                args = self.codegen_args()
+                # TODO: not hardcode
+                args.insert(2, f"{self.get_name()}_out")
+                # TODO" not hardcode BLOCK_SIZE
+                args.append(f"grid={self.get_name()}_grid({{'BLOCK_SIZE': 1024}})")
+                args.append(f"stream=stream0")
+                wrapper.writeline(f"stream0 = get_cuda_stream(0)")
+                wrapper.writeline(f"custom_triton_0.run({', '.join(args)})")
+                #wrapper.writeline(f"op_to_kernel['{opname}'][0][{self.get_name()}_grid]({', '.join(args)})")
+                wrapper.writeline(f"{self.get_name()} = {self.get_name()}_out")
+                return
             super().codegen(wrapper)
 
     @classmethod

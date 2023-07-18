@@ -2267,6 +2267,7 @@ class TritonScheduling:
                     # TODO - use split ranges ?
                     indexing_dtype_strength_reduction(node._body)
                     index_vars = kernel.split_and_set_ranges(node.get_ranges())
+                    import pdb; pdb.set_trace()
                     node.codegen(index_vars)
 
     def define_kernel(self, src_code, node_schedule):

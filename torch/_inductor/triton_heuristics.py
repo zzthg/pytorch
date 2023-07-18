@@ -305,6 +305,7 @@ class CachingAutotuner(KernelInterface):
 
     def autotune_to_one_config(self, *args, **kwargs):
         """Do the actual autotuning"""
+        raise RuntimeError("autotuning")
         timings = self.benchmark_all_configs(*args, **kwargs)
         self.launchers = [builtins.min(timings, key=timings.get)]
         if self.save_cache_hook:

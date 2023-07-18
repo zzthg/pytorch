@@ -837,7 +837,8 @@ class GraphLowering(torch.fx.Interpreter):
         assert self.scheduler is not None  # mypy can't figure this out
         self.scheduler.codegen()
         assert self.wrapper_code is not None
-        return self.wrapper_code.generate()
+        result = self.wrapper_code.generate()
+        return result
 
     def count_bytes(self):
         from .scheduler import FusedSchedulerNode, NopKernelSchedulerNode, Scheduler
