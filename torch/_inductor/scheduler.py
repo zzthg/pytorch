@@ -22,22 +22,26 @@ from .virtualized import V
 log = logging.getLogger(__name__)
 
 
-class ReorderingGraphEdge:
-    def __init__(self, node1, node2):
-        self.node1 = node1
-        self.node2 = node2
-
-    def __str__(self):
-        return f"Edge: {self.node1} -> {self.node2}"
-
 SOURCE_NODE = "source"
 SINK_NODE = "sink"
 
 class ReorderingGraph:
     def __init__(self):
-        self.edges = list()
+        self.nodes = set()
+        self.edges = collections.defaultdict(set) # source to all dests
+        self.bwd_edges = collections.defaultdict(set) # source to all dests
+
+        # self.edges = list()
+
+    def add_edge(self, source, dest):
+        self.edges[source].add(dest)
+        self.bwd_edges[dest].add(source)
 
     def create_graph(self, sch_nodes):
+        self.nodes = set(sch_nodes)
+        self.nodes.add(SOURCE_NODE)
+        self.nodes.add(SINK_NODE)
+
         seen = set()
         name_to_node = dict()
 
@@ -47,19 +51,22 @@ class ReorderingGraph:
                 seen.add(n)
                 # Add source node edge
                 if len(n.unmet_dependencies) == 0:
-                    self.edges.append(ReorderingGraphEdge(SOURCE_NODE, dest))
+                    self.add_edge(SOURCE_NODE, dest)
+                    # ReorderingGraphEdge(SOURCE_NODE, dest))
 
                 # Add sink node edge
                 for use in n.users:
                     if isinstance(use.node, OutputNode):
-                        self.edges.append(ReorderingGraphEdge(dest, SINK_NODE))
+                        self.add_edge(dest, SINK_NODE)
+                        # self.edges.append(ReorderingGraphEdge(dest, SINK_NODE))
                         break
 
                 # traversr
                 for dep in sorted(n.unmet_dependencies, key=lambda d: d.name):
                     source = name_to_node[dep.name]
                     visit(source)
-                    self.edges.append(ReorderingGraphEdge(source, dest))
+                    self.add_edge(source, node)
+                    # self.edges.append(ReorderingGraphEdge(source, dest))
 
         for node in sch_nodes:
             for name in node.get_names():
@@ -71,8 +78,21 @@ class ReorderingGraph:
         self.pprint()
 
     def pprint(self):
-        for edge in self.edges:
-            print(edge)
+        # for node in sorted(self.nodes, key=lambda d: d.get_names()):
+        #     print(f"Edges {node} -> {self.edges[node]}")
+        for source, dest in self.edges.items():
+            print(f"Edge {source} -> {dest}")
+
+    # def validator(self):
+    #     # Check the degree of each node
+
+    #     to_be_deleted =
+    #     for node in self.nodes:
+    #         if node is (SINK_NODE, SOURCE_NODE):
+    #             continue
+    #         if len(self.edges[node]) == 1 and len(self.bwd_edges[node] == 1):
+
+
 
 
 
