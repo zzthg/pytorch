@@ -22,79 +22,6 @@ from .virtualized import V
 log = logging.getLogger(__name__)
 
 
-SOURCE_NODE = "source"
-SINK_NODE = "sink"
-
-class ReorderingGraph:
-    def __init__(self):
-        self.nodes = set()
-        self.edges = collections.defaultdict(set) # source to all dests
-        self.bwd_edges = collections.defaultdict(set) # source to all dests
-
-        # self.edges = list()
-
-    def add_edge(self, source, dest):
-        self.edges[source].add(dest)
-        self.bwd_edges[dest].add(source)
-
-    def create_graph(self, sch_nodes):
-        self.nodes = set(sch_nodes)
-        self.nodes.add(SOURCE_NODE)
-        self.nodes.add(SINK_NODE)
-
-        seen = set()
-        name_to_node = dict()
-
-        def visit(n):
-            if n not in seen:
-                dest = n
-                seen.add(n)
-                # Add source node edge
-                if len(n.unmet_dependencies) == 0:
-                    self.add_edge(SOURCE_NODE, dest)
-                    # ReorderingGraphEdge(SOURCE_NODE, dest))
-
-                # Add sink node edge
-                for use in n.users:
-                    if isinstance(use.node, OutputNode):
-                        self.add_edge(dest, SINK_NODE)
-                        # self.edges.append(ReorderingGraphEdge(dest, SINK_NODE))
-                        break
-
-                # traversr
-                for dep in sorted(n.unmet_dependencies, key=lambda d: d.name):
-                    source = name_to_node[dep.name]
-                    visit(source)
-                    self.add_edge(source, node)
-                    # self.edges.append(ReorderingGraphEdge(source, dest))
-
-        for node in sch_nodes:
-            for name in node.get_names():
-                name_to_node[name] = node
-
-        for node in sch_nodes:
-            visit(node)
-
-        self.pprint()
-
-    def pprint(self):
-        # for node in sorted(self.nodes, key=lambda d: d.get_names()):
-        #     print(f"Edges {node} -> {self.edges[node]}")
-        for source, dest in self.edges.items():
-            print(f"Edge {source} -> {dest}")
-
-    # def validator(self):
-    #     # Check the degree of each node
-
-    #     to_be_deleted =
-    #     for node in self.nodes:
-    #         if node is (SINK_NODE, SOURCE_NODE):
-    #             continue
-    #         if len(self.edges[node]) == 1 and len(self.bwd_edges[node] == 1):
-
-
-
-
 
 def pformat(obj):
     if isinstance(obj, set):
@@ -814,6 +741,96 @@ class NodeUser:
         return self.node.get_name()
 
 
+SOURCE_NODE = "source"
+SINK_NODE = "sink"
+
+@dataclasses.dataclass
+class DeleteInfo:
+    pred: SchedulerNode
+    middle_node: SchedulerNode
+    succ: SchedulerNode
+
+
+class ReorderingGraph:
+    def __init__(self):
+        self.nodes = set()
+        self.edges = collections.defaultdict(set) # source to all dests
+        self.bwd_edges = collections.defaultdict(set) # source to all dests
+
+        # self.edges = list()
+
+    def add_edge(self, source, dest):
+        self.edges[source].add(dest)
+        self.bwd_edges[dest].add(source)
+
+    def create_graph(self, sch_nodes):
+        self.nodes = set(sch_nodes)
+        self.nodes.add(SOURCE_NODE)
+        self.nodes.add(SINK_NODE)
+
+        seen = set()
+        name_to_node = dict()
+
+        def visit(n):
+            if n not in seen:
+                dest = n
+                seen.add(n)
+                # Add source node edge
+                if len(n.unmet_dependencies) == 0:
+                    self.add_edge(SOURCE_NODE, dest)
+                    # ReorderingGraphEdge(SOURCE_NODE, dest))
+
+                # Add sink node edge
+                for use in n.users:
+                    if isinstance(use.node, OutputNode):
+                        self.add_edge(dest, SINK_NODE)
+                        # self.edges.append(ReorderingGraphEdge(dest, SINK_NODE))
+                        break
+
+                # traversr
+                for dep in sorted(n.unmet_dependencies, key=lambda d: d.name):
+                    source = name_to_node[dep.name]
+                    visit(source)
+                    self.add_edge(source, node)
+                    # self.edges.append(ReorderingGraphEdge(source, dest))
+
+        for node in sch_nodes:
+            for name in node.get_names():
+                name_to_node[name] = node
+
+        for node in sch_nodes:
+            visit(node)
+
+        self.pprint()
+
+    def pprint(self):
+        # for node in sorted(self.nodes, key=lambda d: d.get_names()):
+        #     print(f"Edges {node} -> {self.edges[node]}")
+        for source, dest in self.edges.items():
+            print(f"Edge {source} -> {dest}")
+
+    def validate(self):
+        # pred --> node --> succ
+        # 1) Delete the pred to node edge
+        # 2) Delete the node to succ edge
+        # 3) Add a new edge from pred to succ
+        # 4) Delete node from self.nodes
+
+        to_be_deleted = list()
+
+        for node in self.nodes:
+            if node is (SINK_NODE, SOURCE_NODE):
+                continue
+            if len(self.edges[node]) == 1 and len(self.bwd_edges[node]) == 1:
+                succ = list(self.edges[node])[0]
+                pred = list(self.bwd_edges[node])[0]
+                to_be_deleted.append(DeleteInfo(pred, node, succ))
+
+        for tbd in to_be_deleted:
+            print("-->", tbd)
+
+
+
 class Scheduler:
     @dynamo_timed
     def __init__(self, nodes):
@@ -846,8 +863,32 @@ class Scheduler:
 
         self.compute_dependencies()
 
+
+
+
+
+
+
+
+
+
+
+
         # Start the reordering graph transformrationbs
-        ReorderingGraph().create_graph(self.nodes)
+        reordered_graph = ReorderingGraph()
+        reordered_graph.create_graph(self.nodes)
+        reordered_graph.validate()
+        V.debug.graph_diagram(self.nodes)
+        self.debug_draw_graph()
+
+
+
+
+
+
+
+
+
 
         self.topological_sort_schedule()
         self.compute_predecessors()
@@ -861,8 +902,8 @@ class Scheduler:
         self.fuse_nodes()
         self.compute_last_usage()
         V.debug.ir_post_fusion(self.nodes)
-        V.debug.graph_diagram(self.nodes)
-        self.debug_draw_graph()
+        # V.debug.graph_diagram(self.nodes)
+        # self.debug_draw_graph()
 
         # used during codegen:
         self.current_device = None
