@@ -22,6 +22,60 @@ from .virtualized import V
 log = logging.getLogger(__name__)
 
 
+class ReorderingGraphEdge:
+    def __init__(self, node1, node2):
+        self.node1 = node1
+        self.node2 = node2
+
+    def __str__(self):
+        return f"Edge: {self.node1} -> {self.node2}"
+
+SOURCE_NODE = "source"
+SINK_NODE = "sink"
+
+class ReorderingGraph:
+    def __init__(self):
+        self.edges = list()
+
+    def create_graph(self, sch_nodes):
+        seen = set()
+        name_to_node = dict()
+
+        def visit(n):
+            if n not in seen:
+                dest = n
+                seen.add(n)
+                # Add source node edge
+                if len(n.unmet_dependencies) == 0:
+                    self.edges.append(ReorderingGraphEdge(SOURCE_NODE, dest))
+
+                # Add sink node edge
+                for use in n.users:
+                    if isinstance(use.node, OutputNode):
+                        self.edges.append(ReorderingGraphEdge(dest, SINK_NODE))
+                        break
+
+                # traversr
+                for dep in sorted(n.unmet_dependencies, key=lambda d: d.name):
+                    source = name_to_node[dep.name]
+                    visit(source)
+                    self.edges.append(ReorderingGraphEdge(source, dest))
+
+        for node in sch_nodes:
+            for name in node.get_names():
+                name_to_node[name] = node
+
+        for node in sch_nodes:
+            visit(node)
+
+        self.pprint()
+
+    def pprint(self):
+        for edge in self.edges:
+            print(edge)
+
+
+
 def pformat(obj):
     if isinstance(obj, set):
         # pformat has trouble with sets of sympy exprs
@@ -771,6 +825,10 @@ class Scheduler:
         self.mutation_renames = {}
 
         self.compute_dependencies()
+
+        # Start the reordering graph transformrationbs
+        ReorderingGraph().create_graph(self.nodes)
+
         self.topological_sort_schedule()
         self.compute_predecessors()
         self.dead_node_elimination()
