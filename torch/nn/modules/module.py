@@ -1643,6 +1643,9 @@ class Module:
     def __getstate__(self):
         state = self.__dict__.copy()
         state.pop("_compiled_call_impl", None)
+        # TorchDynamo installs the cached guards/graphs on the nn module
+        # instance. They don't need to be serialized.
+        state.pop("__dynamo_cache__", None)
         return state
 
     def __setstate__(self, state):
