@@ -266,9 +266,13 @@ def fake_tensor_prop(
     return fake_mode
 
 
+from torch._dynamo.utils import dynamo_profiled
+
+
 @DebugContext.wrap
 @torch.utils._python_dispatch._disable_current_modes()
 @time_and_log(attr="compilation time (in seconds)")
+@dynamo_profiled
 def compile_fx_inner(
     gm: torch.fx.GraphModule,
     example_inputs: List[torch.Tensor],

@@ -1303,11 +1303,7 @@ class TorchPatcher:
             sgd,
         }
 
-        disabled_multi_tensor_opts = {
-            adamax,
-            nadam,
-            sgd,  # for now, until we can speed up compilation (this affects the benchmarks)
-        }
+        disabled_multi_tensor_opts = {}
 
         for opt_mod in all_opts:
             opt_name = opt_mod.__name__.split(".")[-1]

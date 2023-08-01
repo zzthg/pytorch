@@ -99,6 +99,8 @@ def tabulate(rows, headers):
 def dynamo_profiled(func):
     @wraps(func)
     def profile_wrapper(*args, **kwargs):
+        if "NO_PROFILE" in os.environ:
+            return func(*args, **kwargs)
         global timer_counter
         datafn = (
             func.__name__ + f"{next(timer_counter)}.profile"
@@ -109,8 +111,8 @@ def dynamo_profiled(func):
         prof.disable()
         print(f"### Cprofile for {func.__name__} iter {next(timer_counter)} ###")
         ps = pstats.Stats(prof)
-        ps.sort_stats(pstats.SortKey.TIME).print_stats(20)
-        ps.sort_stats(pstats.SortKey.CUMULATIVE).print_stats(20)
+        # ps.sort_stats(pstats.SortKey.TIME).print_stats(20)
+        ps.sort_stats(pstats.SortKey.CUMULATIVE).print_stats(80)
         prof.dump_stats(datafn)
         return retval
 

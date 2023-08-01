@@ -167,8 +167,6 @@ class VariableTracker(metaclass=HasPostInit):
                             fn, updated_dict[key], cache, skip_fn
                         )
                 result = fn(value.clone(**updated_dict))
-                if update_contains is False:
-                    result._update_contains()
             else:
                 result = fn(value)
 

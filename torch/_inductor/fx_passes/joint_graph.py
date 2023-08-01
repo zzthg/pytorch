@@ -197,7 +197,7 @@ def joint_graph_passes(graph: torch.fx.GraphModule):
     """
     Run FX transformations on the joint forwards+backwards graph.
     """
-    lazy_init()
+    # lazy_init()
     count = 0
 
     if config.joint_graph_constant_folding:
