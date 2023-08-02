@@ -2459,6 +2459,7 @@ class InliningInstructionTranslator(InstructionTranslatorBase):
         return self.FOR_ITER(inst)
 
 
+
 class InliningGeneratorInstructionTranslator(InliningInstructionTranslator):
     generated_items: List[VariableTracker]
 

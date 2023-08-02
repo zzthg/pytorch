@@ -1402,11 +1402,11 @@ class BuiltinVariable(VariableTracker):
                 _unimplemented()
             return ConstantVariable(op(left.fn, right.fn))
 
-        if isinstance(left, variables.user_defined.ProcessGroupVariable):
+        if isinstance(left, variables.distributed.ProcessGroupVariable):
             if op not in supported_const_comparison_ops.values():
                 _unimplemented()
             if not isinstance(
-                right, (variables.user_defined.ProcessGroupVariable, ConstantVariable)
+                right, (variables.distributed.ProcessGroupVariable, ConstantVariable)
             ):
                 _unimplemented()
             return ConstantVariable(op(left.value, right.value))

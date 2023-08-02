@@ -81,22 +81,22 @@ constant_fold_functions = [
 ]
 
 
-if torch.distributed.is_available():
-    constant_fold_functions.append(torch.distributed.is_initialized)
+# if torch.distributed.is_available():
+#     constant_fold_functions.append(torch.distributed.is_initialized)
 
-    from torch.distributed.distributed_c10d import (
-        _get_group_tag,
-        _rank_not_in_group,
-        get_process_group_ranks,
-    )
+#     from torch.distributed.distributed_c10d import (
+#         _get_group_tag,
+#         _rank_not_in_group,
+#         get_process_group_ranks,
+#     )
 
-    constant_processgroup_functions.extend(
-        [
-            get_process_group_ranks,
-            _get_group_tag,
-            _rank_not_in_group,
-        ]
-    )
+#     constant_processgroup_functions.extend(
+#         [
+#             get_process_group_ranks,
+#             _get_group_tag,
+#             _rank_not_in_group,
+#         ]
+#     )
 
 
 # TODO(voz): perhaps a decorator? This is rather readable for now tho, and not a public API.

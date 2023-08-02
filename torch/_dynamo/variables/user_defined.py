@@ -51,6 +51,7 @@ class UserDefinedClassVariable(UserDefinedVariable):
 
     def var_getattr(self, tx, name: str) -> "VariableTracker":
         from . import ConstantVariable
+        from .distributed import ProcessGroupVariable
         from .builder import VariableBuilder
 
         options = VariableTracker.propagate(self)

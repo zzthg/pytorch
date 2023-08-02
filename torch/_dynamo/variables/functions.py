@@ -585,6 +585,9 @@ class CollectiveFunctionRewriteVariable(UserFunctionVariable):
             inspect.isfunction(variable) and variable in _traceable_collective_remaps()
         )
 
+    def __str__(self):
+        return f"{self.__class__.__name__}({self.orig_fn} -> {self.fn})"
+
     @staticmethod
     def rewrite(fn):
         new_fn = _traceable_collective_remaps()[fn]

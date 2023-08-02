@@ -140,26 +140,9 @@ FILENAME_ALLOWLIST |= {torch.utils._foreach_utils.__file__}
 
 
 if torch.distributed.is_available():
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/fsdp/_fsdp_extensions.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/fsdp/_traversal_utils.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/distributed_c10d/all_gather_into_tensor.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/distributed_c10d/all_gather.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/is_available.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/is_initialized.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/fsdp/_common_utils.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/_composable_state/_insert_module_state.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/fsdp/_get_module_fsdp_state.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/_functional_collectives_impl/_all_gather_into_tensor.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "nn/parallel/scatter_gather/scatter.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/_composable/_get_registry.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/fsdp/_exec_order_utils/_ExecOrderData.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/fsdp/_utils/_same_storage.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/fsdp/_runtime_utils.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/utils/_alloc_storage.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/distributed_c10d/all_gather_into_tensor.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/distributed_c10d/all_gather.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/is_available.py"}
-    FILENAME_ALLOWLIST |= {_module_dir(torch) + "distributed/is_initialized.py"}
+    FILENAME_ALLOWLIST |= set(
+    glob.glob(_module_dir(torch) + "distributed/**/*.py", recursive=True),
+)
 
 # Do trace through match and replace patterns used in PT2E QAT
 # Note: These patterns are comprised of torch ops and for internal use only.

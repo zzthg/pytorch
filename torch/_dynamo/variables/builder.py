@@ -221,6 +221,11 @@ class VariableBuilder:
             UserDefinedObjectVariable,
             FSDPManagedNNModuleVariable,
             UserDefinedClassVariable,
+<<<<<<< HEAD
+=======
+            NumpyNdarrayVariable,
+            DeviceMeshVariable,
+>>>>>>> 0ceda17c885... fix
         ]:
             return True
         return False
@@ -487,6 +492,7 @@ class VariableBuilder:
             )
         # NB: These can't be put in type_dispatch, they have to run later
         elif CollectiveFunctionRewriteVariable.can_rewrite(value):
+            print("CAN REWRITE", value)
             new_fn, new_source = CollectiveFunctionRewriteVariable.rewrite(value)
             old_source = self.source
             self.source = new_source
@@ -573,6 +579,7 @@ class VariableBuilder:
             return CUDAStreamVariable(
                 None,
                 value,
+                value.device,
                 source=self.source,
                 guards=self.make_guards(GuardBuilder.ID_MATCH),
             )
@@ -585,6 +592,7 @@ class VariableBuilder:
             return CUDAStreamVariable(
                 None,
                 value,
+                value.device,
                 source=self.source,
                 guards=self.make_guards(GuardBuilder.ID_MATCH),
             )
@@ -1380,7 +1388,7 @@ def wrap_fx_proxy_cls(
         return SymNodeVariable(proxy, example_value, **options)
     elif proxy.node.target in [torch.cuda.streams.Stream, torch.cuda.current_stream]:
         proxy.node.meta["example_value"] = example_value
-        return CUDAStreamVariable(proxy, example_value, **options)
+        return CUDAStreamVariable(proxy, example_value, example_value.device, **options)
     elif isinstance(example_value, int) and proxy.node.target in [
         torch.sym_int,
         getattr,

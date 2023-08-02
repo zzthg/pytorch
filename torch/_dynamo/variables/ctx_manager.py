@@ -421,12 +421,13 @@ class CUDAStreamContextVariable(ContextWrappingVariable):
 
 
 class CUDAStreamVariable(VariableTracker):
-    def __init__(self, proxy, value, **kwargs):
+    def __init__(self, proxy, value, device, **kwargs):
         if proxy is not None and "example_value" in proxy.node.meta:
             assert proxy.node.meta["example_value"] == value
         super().__init__(**kwargs)
         self.proxy = proxy
         self.value = value
+        self.device = device
 
     def call_method(
         self,
