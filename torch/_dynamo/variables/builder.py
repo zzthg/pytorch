@@ -221,11 +221,8 @@ class VariableBuilder:
             UserDefinedObjectVariable,
             FSDPManagedNNModuleVariable,
             UserDefinedClassVariable,
-<<<<<<< HEAD
-=======
             NumpyNdarrayVariable,
             DeviceMeshVariable,
->>>>>>> 0ceda17c885... fix
         ]:
             return True
         return False
