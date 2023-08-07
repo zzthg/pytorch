@@ -32,27 +32,27 @@ def run(model, optim):
     losses = []
     inp = torch.randn((2, 3), device="cuda")
 
-    explain = torch._dynamo.explain(model, inp)
-    for g in explain.graphs:
-        g.graph.print_tabular()
-    for i, gb in enumerate(explain.break_reasons):
-        print(f"{i}. {gb}")
-    sorted_dict = dict(sorted(torch._dynamo.exc.unimpl_and_count.items(), key=lambda x: x[1], reverse=True))
-    i = 0
-    for k, v in sorted_dict.items():
-        print(f"{i}. {k} - {v}")
-        i += 1 
-    print("Compiling")
-    model = torch._dynamo.optimize("eager")(model)
+    # explain = torch._dynamo.explain(model, inp)
+    # for g in explain.graphs:
+    #     g.graph.print_tabular()
+    # for i, gb in enumerate(explain.break_reasons):
+    #     print(f"{i}. {gb}")
+    # sorted_dict = dict(sorted(torch._dynamo.exc.unimpl_and_count.items(), key=lambda x: x[1], reverse=True))
+    # i = 0
+    # for k, v in sorted_dict.items():
+    #     print(f"{i}. {k} - {v}")
+    #     i += 1 
+    # print("Compiling")
+    # model = torch._dynamo.optimize("eager")(model)
 
-    # for _ in range(3):
-    #     optim.zero_grad(set_to_none=True)
-    #     # inp = torch.randn((2, 3), device="cuda")
-    #     out = model(inp)
-    #     loss = out.sum()
-    #     losses.append(loss)
-    #     loss.backward()
-    #     optim.step()
+    for _ in range(3):
+        optim.zero_grad(set_to_none=True)
+        inp = torch.randn((2, 3), device="cuda")
+        out = model(inp)
+        loss = out.sum()
+        losses.append(loss)
+        loss.backward()
+        optim.step()
     return losses
 
 def main(compiled):
@@ -61,10 +61,24 @@ def main(compiled):
         model = torch._dynamo.optimize("eager", nopython=True)(model)
     return run(model, optim)
 
+gpu_id = int(os.environ["LOCAL_RANK"])
+
+def tracefunc(frame, event, arg, indent=[0]):
+    if gpu_id == 0:
+      if event == "call":
+          indent[0] += 2
+          print("-" * indent[0] + "> call function", frame.f_code.co_name)
+      elif event == "return":
+          print("<" + "-" * indent[0], "exit function", frame.f_code.co_name)
+          indent[0] -= 2
+      return tracefunc
+
+import sys
+# sys.setprofile(tracefunc)
+
 if __name__ == "__main__":
     import time
     dist.init_process_group(backend="nccl")
-    gpu_id = int(os.environ["LOCAL_RANK"])
     device = f"cuda:{gpu_id}"
     torch.cuda.set_device(device)
     eager = main(compiled=False)
