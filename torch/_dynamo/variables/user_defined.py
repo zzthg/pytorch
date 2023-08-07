@@ -81,7 +81,7 @@ class UserDefinedClassVariable(UserDefinedVariable):
             name == "WORLD"
             and self.value is torch.distributed.distributed_c10d.GroupMember
         ):
-            print("world PG")
+            # print("world PG")
             return ProcessGroupVariable(self.value.WORLD).add_options(options)
         return super().var_getattr(tx, name)
 
@@ -186,7 +186,7 @@ class UserDefinedClassVariable(UserDefinedVariable):
             options["mutable_local"] = MutableLocal()
             return variables.DataClassVariable.create(self.value, args, kwargs, options)
 
-        print("Is it partial?", isinstance(self.value, functools.partial), self.value == functools.partial, args, kwargs)
+        # print("Is it partial?", isinstance(self.value, functools.partial), self.value == functools.partial, args, kwargs)
         if self.value == functools.partial:
             subargs = args[1:]
             subargs_real_values = []
@@ -331,6 +331,7 @@ class UserDefinedObjectVariable(UserDefinedVariable):
         # This is for cases when we have sus keys and we cannot make a ConstDictVariable
         if name == "__contains__" and isinstance(self.value, dict):
             from .distributed import ProcessGroupVariable
+
             if isinstance(args[0], (UserDefinedObjectVariable, ConstantVariable, ProcessGroupVariable)):
                 return ConstantVariable(args[0].value in self.value, **options)
         return super().call_method(tx, name, args, kwargs)
@@ -453,8 +454,8 @@ class UserDefinedObjectVariable(UserDefinedVariable):
         getattr_fn = self._check_for_getattr()
 
         try:
-            if name == "_handle":
-                print("CHECKING FOR ATTR?", self, name)
+            # if name == "_handle":
+                # print("CHECKING FOR ATTR?", self, name)
             subobj = self._getattr_static(name)
         except AttributeError:
             subobj = None
@@ -464,8 +465,8 @@ class UserDefinedObjectVariable(UserDefinedVariable):
                 ).call_function(tx, [ConstantVariable(name)], {})
             elif getattr_fn is not None:
                 unimplemented("UserDefined with non-function __getattr__")
-        if name == "_handle":
-            print("Got subobj!", subobj)
+        # if name == "_handle":
+            # print("Got subobj!", subobj)
         if isinstance(subobj, property):
             return variables.UserMethodVariable(
                 subobj.fget, self, source=source, **options
@@ -524,8 +525,8 @@ class UserDefinedObjectVariable(UserDefinedVariable):
                 ),
             )
         ):
-            if name == "_handle":
-                print("NAME IN DICT")
+            # if name == "_handle":
+                # print("NAME IN DICT")
             if source:
                 return VariableBuilder(tx, source)(subobj).add_options(options)
             elif ConstantVariable.is_literal(subobj):
@@ -574,7 +575,7 @@ class UserDefinedObjectVariable(UserDefinedVariable):
             return VariableBuilder(tx, source)(subobj).add_options(options)
             # elif ConstantVariable.is_literal(subobj):
             #     return ConstantVariable(subobj, **options)
-        print("GETATTR, but subobj?", subobj, self.source)
+        # print("GETATTR, but subobj?", subobj, self.source)
         if isinstance(subobj, torch.distributed.fsdp.flat_param.FlatParamHandle):
             return UserDefinedObjectVariable(subobj, **options)
         return variables.GetAttrVariable(self, name, **options)
@@ -642,9 +643,9 @@ class AccumulateGradVariable(UserDefinedObjectVariable):
     def call_method(self, tx, name, args: List[VariableTracker], kwargs: Dict[str, VariableTracker]) -> VariableTracker:
         options = VariableTracker.propagate(self)
         if name == "register_hook":
-            print("REGISTERING?", args)
+            # print("REGISTERING?", args)
             handle = self.value.register_hook(args[0].fn)
-            print("Handle is?", handle, self.proxy)
+            # print("Handle is?", handle, self.proxy)
             tx.store_hook_handle("register_hook", handle)
             return RemovableHandleVariableTracker(handle, name, **options)
         return super().call_method(tx, name, args, kwargs)
@@ -672,7 +673,7 @@ class AutogradNodeVariable(UserDefinedObjectVariable):
 
     def var_getattr(self, tx, name):
         attr = getattr(self.value, name, None)
-        print(f"Asking for {name} on node and it has? {attr} {self.source}")
+        # print(f"Asking for {name} on node and it has? {attr} {self.source}")
         options = VariableTracker.propagate(self)
         if attr and self.source:
             from .builder import VariableBuilder
@@ -687,7 +688,7 @@ class AutogradNodeVariable(UserDefinedObjectVariable):
                 outer_tuple_items.append(inner_tuple_obj)
             outer_tuple_obj = variables.lists.TupleVariable(outer_tuple_items, **options)
             result = outer_tuple_obj
-            print("MADE from next_func?", result, [item.items for item in result.items])
+            # print("MADE from next_func?", result, [item.items for item in result.items])
             return result
             # return UserDefinedObjectVariable(getattr(self.value, name), **options)
         return super().var_getattr(tx, name)

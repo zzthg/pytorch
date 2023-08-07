@@ -1205,7 +1205,7 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
             ), f"Mutating module attribute {inst.argval} during export."
 
         try:
-            print(f"TRYING SETATTR {val} {obj}")
+            # print(f"TRYING SETATTR {val} {obj}")
             self.output.guards.update(
                 BuiltinVariable(setattr)
                 .call_function(self, [obj, ConstantVariable(inst.argval), val], {})
@@ -1213,7 +1213,7 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
             )
             return
         except Unsupported as e:
-            print(f"FAILING SETATTR {val} {obj} {e}")
+            # print(f"FAILING SETATTR {val} {obj} {e}")
             if not self.should_compile_partial_graph():
                 raise
             log.debug("STORE_ATTR triggered compile", exc_info=True)

@@ -421,7 +421,7 @@ class SideEffects:
                     var.mutable_local, {}
                 ).items():
                     for value in reversed(values):
-                        print("Value for record:", var, value)
+                        # print("Value for record:", var, value)
                         if isinstance(var, variables.NewGlobalVariable):
                             cg.tx.output.update_co_names(name)
                             cg(value)
@@ -439,13 +439,13 @@ class SideEffects:
                                 suffixes.append(
                                     [create_instruction("DELETE_ATTR", argval=name)]
                                 )
-                                print(f"Made delattr {name}")
+                                # print(f"Made delattr {name}")
                         else:
                             cg.tx.output.update_co_names(name)
                             cg(value)
                             cg(var.mutable_local.source)
                             suffixes.append([create_instruction("STORE_ATTR", argval=name)])
-                            print(f"Made storeattr {name}")
+                            # print(f"Made storeattr {name}")
             else:
                 raise AssertionError(type(var))
 

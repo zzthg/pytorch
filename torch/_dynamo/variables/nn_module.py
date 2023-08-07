@@ -150,7 +150,7 @@ class NNModuleVariable(VariableTracker):
         if not isinstance(getattr_fn, types.FunctionType):
             unimplemented("torch.nn.Module with a non-function custom __getattr__")
 
-        print("Fallback?", name, self, getattr(base, "_is_fsdp_managed_module", False))
+        # print("Fallback?", name, self, getattr(base, "_is_fsdp_managed_module", False))
         if getattr(base, "_is_fsdp_managed_module", False):
             from .builder import VariableBuilder
             # TODO(voz): Why is fsdp here?
@@ -815,11 +815,11 @@ class FSDPManagedNNModuleVariable(UnspecializedNNModuleVariable):
         self.module_key = module_key
 
     def call_function(self, tx, args: List[VariableTracker], kwargs: Dict[str, VariableTracker]) -> VariableTracker:
-        print("FSDPManagedNNModuleVariable FUNC", args, kwargs)
+        # print("FSDPManagedNNModuleVariable FUNC", args, kwargs)
         return super().call_function(tx, args, kwargs)
 
     def call_method(self, tx, name, args: List[VariableTracker], kwargs: Dict[str, VariableTracker]) -> VariableTracker:
-        print("FSDPManagedNNModuleVariableMETHOD", name)
+        # print("FSDPManagedNNModuleVariableMETHOD", name)
         key = self.module_key
         options = VariableTracker.propagate(self, args, kwargs.values())
 
@@ -890,7 +890,7 @@ class FSDPManagedNNModuleVariable(UnspecializedNNModuleVariable):
         return super().call_method(tx, name, args, kwargs)
 
     def var_getattr(self, tx, name):
-        print("FSDPGetattr", name)
+        # print("FSDPGetattr", name)
         if name in ["named_buffers", "children", "buffers"]:
             # Route this to produce a ListIteratorVariable instead of getting the generator
             return variables.LambdaVariable(

@@ -296,7 +296,7 @@ class TensorVariable(VariableTracker):
                 if type(static_attr) != types.GetSetDescriptorType:
                     return None
 
-                print("Falling back to generic", self.as_proxy(), name)
+                # print("Falling back to generic", self.as_proxy(), name)
                 if name == "grad_fn":
                     return variables.user_defined.AutogradNodeVariable(self.as_proxy().node.meta['example_value'].grad_fn, self.as_proxy().grad_fn, **options)
                 return wrap_fx_proxy(
@@ -660,6 +660,11 @@ class TensorVariable(VariableTracker):
             )
             result = TorchVariable(torch.any, **options).call_function(tx, [result], {})
             return result.call_method(tx, "item", [], {})
+        elif name == "register_hook":
+            assert len(args) == 1
+            fn_var = args[0]
+            self.as_proxy().node.meta['example_value'].register_hook(fn_var.fn)
+            return ConstantVariable(None)
         elif name == "redistribute":
             # rewrite non-primitive args/kwargs to be included in the on-the-fly prim function
             # and rewrite args to have only proxyable args, then insert call_function
@@ -689,7 +694,7 @@ class TensorVariable(VariableTracker):
                 and isinstance(args[0], (SizeVariable, ShapeVariable))
             ):
                 name = "new_empty"
-            print("Fallthrough?", name)
+            # print("Fallthrough?", name)
             return wrap_fx_proxy(
                 tx,
                 tx.output.create_proxy(
@@ -1118,5 +1123,5 @@ class TypedStorageVariable(VariableTracker):
             assert len(args) == 1
             self.value._resize_(args[0].value)
             return ConstantVariable(None)
-        print("TypedStorageVariable Call method", name, self.value, args)
+        # print("TypedStorageVariable Call method", name, self.value, args)
         unimplemented(f"typed_storage method calls WIP {name}")
