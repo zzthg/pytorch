@@ -94,6 +94,7 @@ from .lists import (
     SliceVariable,
     TupleIteratorVariable,
     TupleVariable,
+    DequeVariable,
 )
 from .misc import (
     AutogradFunctionContextVariable,
@@ -252,6 +253,7 @@ class VariableBuilder:
             odict_values: ListVariable,
             torch.nn.ParameterList: ListVariable,
             torch.nn.ModuleList: ListVariable,
+            collections.deque: DequeVariable,
         }[type(value)]
 
     def get_source(self):
@@ -283,7 +285,7 @@ class VariableBuilder:
                 ),
                 cls.wrap_tensor,
             ),
-            ((tuple, list, odict_values), cls.wrap_listlike),
+            ((tuple, list, odict_values, collections.deque), cls.wrap_listlike),
             (tuple_iterator, cls.wrap_tuple_iterator),
             ((slice, range), cls.wrap_slice_range),
             (

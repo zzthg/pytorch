@@ -987,11 +987,12 @@ class BuiltinVariable(VariableTracker):
         return variables.ConstantVariable(val)
 
     def call_super(self, tx, a, b):
-        source = (
-            None
-            if a.source is None or b.source is None
-            else SuperSource(type=a.source, base=b.source)
-        )
+        # source = (
+        #     None
+        #     if a.source is None or b.source is None
+        #     else SuperSource(type=a.source, base=b.source)
+        # )
+        source = None
         return variables.SuperVariable(a, b, source=source)
 
     def call_next(self, tx, arg):

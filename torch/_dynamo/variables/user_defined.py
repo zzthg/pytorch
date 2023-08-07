@@ -330,7 +330,8 @@ class UserDefinedObjectVariable(UserDefinedVariable):
 
         # This is for cases when we have sus keys and we cannot make a ConstDictVariable
         if name == "__contains__" and isinstance(self.value, dict):
-            if isinstance(args[0], (UserDefinedObjectVariable, ConstantVariable)):
+            from .distributed import ProcessGroupVariable
+            if isinstance(args[0], (UserDefinedObjectVariable, ConstantVariable, ProcessGroupVariable)):
                 return ConstantVariable(args[0].value in self.value, **options)
         return super().call_method(tx, name, args, kwargs)
 

@@ -32,6 +32,7 @@ class BaseListVariable(VariableTracker):
             torch.Size: SizeVariable,
             tuple: TupleVariable,
             set: SetVariable,
+            collections.deque: DequeVariable
         }[obj]
 
     def __init__(

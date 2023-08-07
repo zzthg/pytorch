@@ -61,12 +61,6 @@ def _auto_wrap(
             )
             _warn_on_overridden_mixed_precision(overridden_module_classes)
         use_orig_params = root_kwargs.get("use_orig_params", False)
-        _validate_frozen_params(
-            root_module,
-            set(target_module_to_kwargs.keys()),
-            ignored_params,
-            use_orig_params,
-        )
         wrap_fn = _construct_wrap_fn(root_module, target_module_to_kwargs, fsdp_fn)
         _post_order_apply(root_module, wrap_fn)
         return

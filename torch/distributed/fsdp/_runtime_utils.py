@@ -654,7 +654,7 @@ def _pre_backward_hook(
     """
     # Only run the pre-backward hook once per group of handles involved in the
     # same module forward computation
-    if handle and state._ran_pre_backward_hook.get(handle, False):
+    if handle and handle._ran_pre_backward_hook:
         return
 
     with torch.profiler.record_function("FullyShardedDataParallel._pre_backward_hook"):
@@ -697,7 +697,7 @@ def _pre_backward_hook(
         ):
             _prefetch_handle(state, handle, _PrefetchMode.BACKWARD)
         handle.prepare_gradient_for_backward()
-        state._ran_pre_backward_hook[handle] = True
+        handle._ran_pre_backward_hook = True
 
 
 @no_type_check
@@ -1034,7 +1034,6 @@ def _post_backward_final_callback(
     for fsdp_state in state._all_fsdp_states:
         _catch_all_reshard(fsdp_state)
         _finalize_params(fsdp_state)
-        fsdp_state._ran_pre_backward_hook.clear()
         fsdp_state.training_state = TrainingState.IDLE
         handle = fsdp_state._handle
         if handle:
