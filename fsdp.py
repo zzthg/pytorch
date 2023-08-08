@@ -58,6 +58,7 @@ def run(model, optim):
 def main(compiled):
     model, optim = init()
     if compiled:
+        torch._dynamo.config.capture_dynamic_output_shape_ops = True
         model = torch._dynamo.optimize("eager", nopython=True)(model)
     return run(model, optim)
 

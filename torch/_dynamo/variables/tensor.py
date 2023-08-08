@@ -130,12 +130,12 @@ class TensorVariable(VariableTracker):
 
     def call_hasattr(self, tx, name: str) -> "VariableTracker":
         options = VariableTracker.propagate(self)
-        val = self.as_proxy().node.meta['example_value']
+        val = self.as_proxy().node.meta["example_value"]
         result = hasattr(val, name)
         return variables.ConstantVariable(result, **options).add_guard(
-            AttrSource(self.source, name).make_guard(
-                GuardBuilder.HASATTR
-            ))
+            AttrSource(self.source, name).make_guard(GuardBuilder.HASATTR)
+        )
+
     @staticmethod
     def specialize(value: torch.Tensor):
         props = {
@@ -298,7 +298,11 @@ class TensorVariable(VariableTracker):
 
                 # print("Falling back to generic", self.as_proxy(), name)
                 if name == "grad_fn":
-                    return variables.user_defined.AutogradNodeVariable(self.as_proxy().node.meta['example_value'].grad_fn, self.as_proxy().grad_fn, **options)
+                    return variables.user_defined.AutogradNodeVariable(
+                        self.as_proxy().node.meta["example_value"].grad_fn,
+                        self.as_proxy().grad_fn,
+                        **options,
+                    )
                 return wrap_fx_proxy(
                     tx=tx,
                     proxy=GetAttrVariable.create_getattr_proxy(self.as_proxy(), name),
@@ -663,7 +667,7 @@ class TensorVariable(VariableTracker):
         elif name == "register_hook":
             assert len(args) == 1
             fn_var = args[0]
-            self.as_proxy().node.meta['example_value'].register_hook(fn_var.fn)
+            self.as_proxy().node.meta["example_value"].register_hook(fn_var.fn)
             return ConstantVariable(None)
         elif name == "redistribute":
             # rewrite non-primitive args/kwargs to be included in the on-the-fly prim function
@@ -1081,7 +1085,8 @@ class TensorSubclassVariable(VariableTracker):
             )
 
         return super().call_function(tx, args, kwargs)
-    
+
+
 class TypedStorageVariable(VariableTracker):
     def __init__(self, value, **kwargs):
         self.value = value

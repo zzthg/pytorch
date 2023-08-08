@@ -275,6 +275,7 @@ def is_valid_global_ref_key(key):
     else:
         return isinstance(key, torch.nn.Module) or isinstance(key, tuple)
 
+
 class DefaultDictVariable(ConstDictVariable):
     def __init__(self, items, user_cls, default_factory=None, **kwargs):
         super().__init__(items, user_cls, **kwargs)

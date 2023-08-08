@@ -5,12 +5,13 @@ import dataclasses
 import enum
 import functools
 import inspect
+import itertools
 import logging
 import operator
 import re
 import types
 from typing import List, NamedTuple, Optional, Union
-import itertools
+
 import torch
 
 from torch import SymInt
@@ -86,6 +87,7 @@ from .functions import (
 from .higher_order_ops import TorchHigherOrderOperatorVariable
 from .lists import (
     BaseListVariable,
+    DequeVariable,
     ListVariable,
     NamedTupleVariable,
     RangeVariable,
@@ -94,7 +96,6 @@ from .lists import (
     SliceVariable,
     TupleIteratorVariable,
     TupleVariable,
-    DequeVariable,
 )
 from .misc import (
     AutogradFunctionContextVariable,
@@ -491,7 +492,6 @@ class VariableBuilder:
             )
         # NB: These can't be put in type_dispatch, they have to run later
         elif CollectiveFunctionRewriteVariable.can_rewrite(value):
-            print("CAN REWRITE", value)
             new_fn, new_source = CollectiveFunctionRewriteVariable.rewrite(value)
             old_source = self.source
             self.source = new_source
@@ -644,7 +644,6 @@ class VariableBuilder:
                 guards=self.make_guards(GuardBuilder.TYPE_MATCH),
             )
         elif ProcessGroupVariable.is_process_group(value):
-            print("Made PG")
             return ProcessGroupVariable(
                 value,
                 source=self.source,
@@ -779,7 +778,9 @@ class VariableBuilder:
             and not config.allow_rnn
         ):
             unimplemented("TorchDynamo purposely graph breaks on RNN, GRU, LSTMs")
-        if mutation_guard.is_dynamic_nn_module(value) and not getattr(value, "_is_fsdp_managed_module", False):
+        if mutation_guard.is_dynamic_nn_module(value) and not getattr(
+            value, "_is_fsdp_managed_module", False
+        ):
             # created dynamically, don't specialize on it
             result = UnspecializedNNModuleVariable(
                 value, guards=self.make_guards(GuardBuilder.TYPE_MATCH)
@@ -822,7 +823,7 @@ class VariableBuilder:
             #
             # ID_MATCH is required to disambiguate cases as simple as a unit test that constructs 2 models and wraps
             # them differently with different FSDP configs.  (test_dynamo_distributed.py -k test_fsdp_aot_eager)
-            
+
             # TODO(voz): Dedup with register_attr
             base = self.name
             name = self.name

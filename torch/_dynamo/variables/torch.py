@@ -81,24 +81,6 @@ constant_fold_functions = [
 ]
 
 
-# if torch.distributed.is_available():
-#     constant_fold_functions.append(torch.distributed.is_initialized)
-
-#     from torch.distributed.distributed_c10d import (
-#         _get_group_tag,
-#         _rank_not_in_group,
-#         get_process_group_ranks,
-#     )
-
-#     constant_processgroup_functions.extend(
-#         [
-#             get_process_group_ranks,
-#             _get_group_tag,
-#             _rank_not_in_group,
-#         ]
-#     )
-
-
 # TODO(voz): perhaps a decorator? This is rather readable for now tho, and not a public API.
 def remap_as_fn___radd__(*args):
     return torch._C._TensorBase.__radd__(*args)
@@ -734,7 +716,6 @@ For now, dynamo will explicitly graph break when it encounters user code with th
 
                 if isinstance(data_arg, ListVariable) and check_any_unspec(data_arg):
                     unimplemented("torch.tensor call with list of unspec")
-            print("INVOKING ", fn_, self)
             tensor_variable = wrap_fx_proxy(
                 tx=tx,
                 proxy=tx.output.create_proxy(

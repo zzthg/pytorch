@@ -444,7 +444,9 @@ class CUDAStreamVariable(VariableTracker):
         return self.proxy
 
     def reconstruct(self, codegen):
-        unimplemented(f"Can I reconstruct stream? {self.source} {self.value} {self.proxy}")
+        unimplemented(
+            f"Can I reconstruct stream? {self.source} {self.value} {self.proxy}"
+        )
         return super().reconstruct(codegen)
 
 

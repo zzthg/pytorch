@@ -32,7 +32,7 @@ class BaseListVariable(VariableTracker):
             torch.Size: SizeVariable,
             tuple: TupleVariable,
             set: SetVariable,
-            collections.deque: DequeVariable
+            collections.deque: DequeVariable,
         }[obj]
 
     def __init__(
@@ -554,7 +554,9 @@ class SizeVariable(TupleVariable):
             out = self.get_item_dyn(tx, args[0])
             return out
         if name == "numel":
-            return ConstantVariable(torch.Size([item.value for item in self.items]).numel())
+            return ConstantVariable(
+                torch.Size([item.value for item in self.items]).numel()
+            )
         return super().call_method(tx, name, args, kwargs)
 
     def get_item_dyn(self, tx, arg: VariableTracker):
@@ -912,20 +914,20 @@ class SetVariable(VariableTracker):
             assert len(args) == 1
             assert not kwargs
 
-
             search = args[0]
+
             def _search(item):
                 if isinstance(item, variables.NNModuleVariable):
-                    return self.tx.output.nn_modules[item.module_key] == search.as_python_constant()
+                    return (
+                        self.tx.output.nn_modules[item.module_key]
+                        == search.as_python_constant()
+                    )
                 return item.as_python_constant() == search.as_python_constant()
 
-                
                 x.as_python_constant() == search.as_python_constant()
+
             if check_constant_args(args, {}) and search.is_python_constant():
-                result = any(
-                   _search(x)
-                    for x in self.items
-                )
+                result = any(_search(x) for x in self.items)
                 return variables.ConstantVariable(result, **options)
 
             from .builtin import BuiltinVariable

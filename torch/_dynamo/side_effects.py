@@ -161,10 +161,10 @@ class SideEffects:
         if item.mutable_local not in self.store_attr_mutations:
             self.store_attr_mutations[item.mutable_local] = collections.OrderedDict()
         # if name in self.store_attr_mutations[item.mutable_local]:
-            # result = self.store_attr_mutations[item.mutable_local][name]
-            # if isinstance(result, variables.DeletedVariable):
-            #     # unimplemented("Writing to deleted field")
-            #     print("Writing to deleted field")
+        # result = self.store_attr_mutations[item.mutable_local][name]
+        # if isinstance(result, variables.DeletedVariable):
+        #     # unimplemented("Writing to deleted field")
+        #     print("Writing to deleted field")
         if name not in self.store_attr_mutations[item.mutable_local]:
             self.store_attr_mutations[item.mutable_local][name] = []
         self.store_attr_mutations[item.mutable_local][name].append(value)
@@ -444,7 +444,9 @@ class SideEffects:
                             cg.tx.output.update_co_names(name)
                             cg(value)
                             cg(var.mutable_local.source)
-                            suffixes.append([create_instruction("STORE_ATTR", argval=name)])
+                            suffixes.append(
+                                [create_instruction("STORE_ATTR", argval=name)]
+                            )
                             # print(f"Made storeattr {name}")
             else:
                 raise AssertionError(type(var))

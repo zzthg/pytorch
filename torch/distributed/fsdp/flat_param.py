@@ -1789,7 +1789,7 @@ class FlatParamHandle:
         self._check_unsharded(flat_param)
         views = self._get_unflat_views()
         from torch.distributed._tensor import DTensor
-        
+
         for i, (view, (param_name, module, _)) in enumerate(
             zip(views, flat_param._param_infos)
         ):

@@ -121,7 +121,7 @@ class PyCodegen:
                 NumpyNdarrayVariable,
                 # Eeew
                 torch._dynamo.variables.ctx_manager.CUDAStreamVariable,
-                torch._dynamo.variables.user_defined.AccumulateGradVariable
+                torch._dynamo.variables.user_defined.AccumulateGradVariable,
             ),
         ):
             graph_outputs_key = self.add_graph_output(value)

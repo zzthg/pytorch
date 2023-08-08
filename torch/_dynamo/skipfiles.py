@@ -81,7 +81,6 @@ SKIP_DIRS = [
         copyreg,
         dataclasses,
         enum,
-        # functools,
         importlib,
         inspect,
         linecache,
@@ -135,14 +134,10 @@ FILENAME_ALLOWLIST |= {torch.optim._functional.__file__}
 FILENAME_ALLOWLIST |= {torch.utils._foreach_utils.__file__}
 
 
-# import inspect
-# import torch
-
-
 if torch.distributed.is_available():
     FILENAME_ALLOWLIST |= set(
-    glob.glob(_module_dir(torch) + "distributed/**/*.py", recursive=True),
-)
+        glob.glob(_module_dir(torch) + "distributed/**/*.py", recursive=True),
+    )
 
 # Do trace through match and replace patterns used in PT2E QAT
 # Note: These patterns are comprised of torch ops and for internal use only.

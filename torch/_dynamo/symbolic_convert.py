@@ -702,7 +702,9 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
         self.output.compile_subgraph(
             self,
             partial_convert=True,
-            reason=GraphCompileReason(f"step_unsupported {inst}", [self.frame_summary()]),
+            reason=GraphCompileReason(
+                f"step_unsupported {inst}", [self.frame_summary()]
+            ),
         )
         self.output.add_output_instructions(
             [create_jump_absolute(continue_inst)] + self.instructions
@@ -1223,7 +1225,10 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
 
         # break the graph
         self.output.compile_subgraph(
-            self, reason=GraphCompileReason(f"store_attr {val} {obj}", [self.frame_summary()])
+            self,
+            reason=GraphCompileReason(
+                f"store_attr {val} {obj}", [self.frame_summary()]
+            ),
         )
         self.output.add_output_instructions([copy.copy(inst)])
         self.popn(2)
@@ -2178,7 +2183,6 @@ class InstructionTranslator(InstructionTranslatorBase):
         self.call_function(BuiltinVariable(delattr), [obj, key], {})
 
 
-
 class InliningInstructionTranslator(InstructionTranslatorBase):
     """Trace and inline a called method"""
 
@@ -2457,7 +2461,6 @@ class InliningInstructionTranslator(InstructionTranslatorBase):
             self.pop()
             return
         return self.FOR_ITER(inst)
-
 
 
 class InliningGeneratorInstructionTranslator(InliningInstructionTranslator):

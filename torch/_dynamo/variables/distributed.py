@@ -36,14 +36,14 @@ def is_constant_pg_functions(value):
 
     from torch.distributed.distributed_c10d import (
         _get_group_tag,
+        _rank_not_in_group,
         get_process_group_ranks,
-        _rank_not_in_group
     )
 
     constant_processgroup_functions = [
         get_process_group_ranks,
         _get_group_tag,
-        _rank_not_in_group
+        _rank_not_in_group,
     ]
 
     return inspect.isfunction(value) and value in constant_processgroup_functions
@@ -156,7 +156,9 @@ class DeviceMeshVariable(DistributedVariable):
             return ConstantVariable(self.value.ndim)
         return super().var_getattr(tx, name)
 
-    def call_method(self, tx, name, args: List[VariableTracker], kwargs: Dict[str, VariableTracker]) -> VariableTracker:
+    def call_method(
+        self, tx, name, args: List[VariableTracker], kwargs: Dict[str, VariableTracker]
+    ) -> VariableTracker:
         if name == "_get_or_create_default_group":
             return ProcessGroupVariable(self.value._get_or_create_default_group())
         return super().call_method(tx, name, args, kwargs)

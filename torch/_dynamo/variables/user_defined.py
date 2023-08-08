@@ -8,14 +8,14 @@ import random
 import threading
 import types
 from typing import Dict, List
-from torch._dynamo.variables.base import VariableTracker
 
 import torch.nn
+from torch._dynamo.variables.base import VariableTracker
 
 from .. import variables
 from ..allowed_functions import is_allowed
-from ..exc import unimplemented
 from ..bytecode_transformation import create_call_function
+from ..exc import unimplemented
 from ..guards import GuardBuilder
 from ..source import AttrSource, ODictGetItemSource, RandomValueSource
 from ..utils import (
@@ -51,8 +51,8 @@ class UserDefinedClassVariable(UserDefinedVariable):
 
     def var_getattr(self, tx, name: str) -> "VariableTracker":
         from . import ConstantVariable
-        from .distributed import ProcessGroupVariable
         from .builder import VariableBuilder
+        from .distributed import ProcessGroupVariable
 
         options = VariableTracker.propagate(self)
         source = AttrSource(self.source, name) if self.source is not None else None
@@ -214,8 +214,11 @@ class UserDefinedObjectVariable(UserDefinedVariable):
         if isinstance(value, collections.deque) or value == collections.deque:
             raise RuntimeError("not allowed!")
         # if isinstance(self.value, (types.FunctionType, types.MethodType)):
-            # raise RuntimeError(f"Trying to make a UDO func {self.value}")
-        if getattr(self.value, '_is_fsdp_managed_module', False) and type(self) == UserDefinedObjectVariable:
+        # raise RuntimeError(f"Trying to make a UDO func {self.value}")
+        if (
+            getattr(self.value, "_is_fsdp_managed_module", False)
+            and type(self) == UserDefinedObjectVariable
+        ):
             raise RuntimeError(f"Cant make fsdp module as UDO {type(self)}")
         assert type(value) is self.value_type
 
@@ -234,8 +237,13 @@ class UserDefinedObjectVariable(UserDefinedVariable):
         return self.value_type
 
     def reconstruct(self, codegen):
-        if isinstance(self.value, torch.distributed.fsdp.fully_sharded_data_parallel.FullyShardedDataParallel):
-            raise RuntimeError(f"Attempted reconstruct? {self.value}, {type(self.value)} {getattr(self.value, '_is_fsdp_managed_module', False)}")
+        if isinstance(
+            self.value,
+            torch.distributed.fsdp.fully_sharded_data_parallel.FullyShardedDataParallel,
+        ):
+            raise RuntimeError(
+                f"Attempted reconstruct? {self.value}, {type(self.value)} {getattr(self.value, '_is_fsdp_managed_module', False)}"
+            )
         return super().reconstruct(codegen)
 
     @staticmethod
@@ -332,7 +340,10 @@ class UserDefinedObjectVariable(UserDefinedVariable):
         if name == "__contains__" and isinstance(self.value, dict):
             from .distributed import ProcessGroupVariable
 
-            if isinstance(args[0], (UserDefinedObjectVariable, ConstantVariable, ProcessGroupVariable)):
+            if isinstance(
+                args[0],
+                (UserDefinedObjectVariable, ConstantVariable, ProcessGroupVariable),
+            ):
                 return ConstantVariable(args[0].value in self.value, **options)
         return super().call_method(tx, name, args, kwargs)
 
@@ -455,7 +466,7 @@ class UserDefinedObjectVariable(UserDefinedVariable):
 
         try:
             # if name == "_handle":
-                # print("CHECKING FOR ATTR?", self, name)
+            # print("CHECKING FOR ATTR?", self, name)
             subobj = self._getattr_static(name)
         except AttributeError:
             subobj = None
@@ -466,7 +477,7 @@ class UserDefinedObjectVariable(UserDefinedVariable):
             elif getattr_fn is not None:
                 unimplemented("UserDefined with non-function __getattr__")
         # if name == "_handle":
-            # print("Got subobj!", subobj)
+        # print("Got subobj!", subobj)
         if isinstance(subobj, property):
             return variables.UserMethodVariable(
                 subobj.fget, self, source=source, **options
@@ -486,7 +497,12 @@ class UserDefinedObjectVariable(UserDefinedVariable):
             )
         elif isinstance(subobj, types.FunctionType) or (
             isinstance(subobj, types.MethodType)
-            and (isinstance(self.value, torch.nn.Module) or isinstance(self.value, torch.distributed.fsdp.flat_param.FlatParamHandle))
+            and (
+                isinstance(self.value, torch.nn.Module)
+                or isinstance(
+                    self.value, torch.distributed.fsdp.flat_param.FlatParamHandle
+                )
+            )
         ):
             if isinstance(subobj, types.MethodType):
                 func = subobj.__func__
@@ -513,7 +529,7 @@ class UserDefinedObjectVariable(UserDefinedVariable):
         #     isinstance(subobj, types.MethodType)
         #     and isinstance(self.value, torch.distributed.fsdp.flat_param.FlatParamHandle)
         # ):
-            # print("Gettattr driven via subobj?", type(self.value), subobj, type(subobj))
+        # print("Gettattr driven via subobj?", type(self.value), subobj, type(subobj))
         if (
             name in getattr(value, "__dict__", {})
             or ConstantVariable.is_literal(subobj)
@@ -526,7 +542,7 @@ class UserDefinedObjectVariable(UserDefinedVariable):
             )
         ):
             # if name == "_handle":
-                # print("NAME IN DICT")
+            # print("NAME IN DICT")
             if source:
                 return VariableBuilder(tx, source)(subobj).add_options(options)
             elif ConstantVariable.is_literal(subobj):
@@ -621,26 +637,25 @@ class UserDefinedObjectVariable(UserDefinedVariable):
         ).add_options(key, self)
 
 
-
-
 class RemovableHandleVariableTracker(UserDefinedObjectVariable):
     def __init__(self, value, name, value_type=None, **kwargs):
         super().__init__(value, value_type, **kwargs)
         self.name = name
-    
+
     def reconstruct(self, codegen):
-        codegen.append_output(
-            codegen.create_load_global(self.name, True, add=True)
-        )
+        codegen.append_output(codegen.create_load_global(self.name, True, add=True))
         codegen.extend_output(create_call_function(0, False))
         return []
+
 
 class AccumulateGradVariable(UserDefinedObjectVariable):
     def __init__(self, value, proxy, value_type=None, **kwargs):
         self.proxy = proxy
         super().__init__(value, value_type, **kwargs)
 
-    def call_method(self, tx, name, args: List[VariableTracker], kwargs: Dict[str, VariableTracker]) -> VariableTracker:
+    def call_method(
+        self, tx, name, args: List[VariableTracker], kwargs: Dict[str, VariableTracker]
+    ) -> VariableTracker:
         options = VariableTracker.propagate(self)
         if name == "register_hook":
             # print("REGISTERING?", args)
@@ -655,15 +670,14 @@ class AccumulateGradVariable(UserDefinedObjectVariable):
 
     # def reconstruct(self, codegen):
     #     return []
-        # try:
-        #     return variables.ConstantVariable(self.value).reconstruct(codegen)
-        # except Exception as e:
-        #     print("FAILED! BAD!", str(e))
-        #     import traceback
-        #     traceback.print_exc(limit=5)
-        #     print("FAILED! BAD!", str(e))
-        #     raise
-    
+    # try:
+    #     return variables.ConstantVariable(self.value).reconstruct(codegen)
+    # except Exception as e:
+    #     print("FAILED! BAD!", str(e))
+    #     import traceback
+    #     traceback.print_exc(limit=5)
+    #     print("FAILED! BAD!", str(e))
+    #     raise
 
 
 class AutogradNodeVariable(UserDefinedObjectVariable):
@@ -677,16 +691,27 @@ class AutogradNodeVariable(UserDefinedObjectVariable):
         options = VariableTracker.propagate(self)
         if attr and self.source:
             from .builder import VariableBuilder
-            return VariableBuilder(tx, AttrSource(self.source, name))(getattr(self.value, name))
+
+            return VariableBuilder(tx, AttrSource(self.source, name))(
+                getattr(self.value, name)
+            )
         elif attr and name == "next_functions":
             outer_tuple_items = []
             for i, outer_item in enumerate(attr):
                 inner_tuple_items = []
                 for j, inner_item in enumerate(outer_item):
-                    inner_tuple_items.append(AccumulateGradVariable(inner_item, self.proxy.next_functions[i][j], **options)) 
-                inner_tuple_obj = variables.lists.TupleVariable(inner_tuple_items, **options)
+                    inner_tuple_items.append(
+                        AccumulateGradVariable(
+                            inner_item, self.proxy.next_functions[i][j], **options
+                        )
+                    )
+                inner_tuple_obj = variables.lists.TupleVariable(
+                    inner_tuple_items, **options
+                )
                 outer_tuple_items.append(inner_tuple_obj)
-            outer_tuple_obj = variables.lists.TupleVariable(outer_tuple_items, **options)
+            outer_tuple_obj = variables.lists.TupleVariable(
+                outer_tuple_items, **options
+            )
             result = outer_tuple_obj
             # print("MADE from next_func?", result, [item.items for item in result.items])
             return result
