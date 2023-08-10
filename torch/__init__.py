@@ -1783,7 +1783,7 @@ def export(
         - Data structures that can be flattened by PyTree
             (e.g., dict, list, tuple, namedtuple, OrderedDict)
         - Dataclass subclass (must be registered with 
-            torch._export.utils.register_dataclass_as_pytree_node` first)
+            torch.compiler.register_dataclass_as_pytree_node` first)
 
     torch.export() specializes the traced program based on the values of 
     inputs that are not torch.Tensors. If you want to preserve dynamic
