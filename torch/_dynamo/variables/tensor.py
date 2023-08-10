@@ -15,7 +15,7 @@ import torch._numpy as tnp
 
 import torch.fx
 import torch.random
-
+from torch._dynamo.variables.base import VariableTracker
 from torch.fx.experimental.symbolic_shapes import free_symbols, guard_scalar, SymTypes
 
 from .. import config, variables
@@ -303,6 +303,12 @@ class TensorVariable(VariableTracker):
                 if type(static_attr) != types.GetSetDescriptorType:
                     return None
 
+                if name == "grad_fn":
+                    return variables.user_defined.AutogradNodeVariable(
+                        self.as_proxy().node.meta["example_value"].grad_fn,
+                        self.as_proxy().grad_fn,
+                        **options,
+                    )
                 return wrap_fx_proxy(
                     tx=tx,
                     proxy=GetAttrVariable.create_getattr_proxy(self.as_proxy(), name),
@@ -673,6 +679,11 @@ class TensorVariable(VariableTracker):
             )
             result = TorchVariable(torch.any, **options).call_function(tx, [result], {})
             return result.call_method(tx, "item", [], {})
+        elif name == "register_hook":
+            assert len(args) == 1
+            fn_var = args[0]
+            self.as_proxy().node.meta["example_value"].register_hook(fn_var.fn)
+            return ConstantVariable(None)
         elif name == "redistribute":
             # rewrite non-primitive args/kwargs to be included in the on-the-fly prim function
             # and rewrite args to have only proxyable args, then insert call_function

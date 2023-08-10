@@ -1,3 +1,4 @@
+import builtins
 import collections
 import dataclasses
 import functools
@@ -795,6 +796,10 @@ class SetVariable(VariableTracker):
             return SetVariable.SetElement(vt, tensor_node)
         if isinstance(vt, ConstantVariable):
             return SetVariable.SetElement(vt, vt.value)
+        if isinstance(vt, variables.UserDefinedObjectVariable):
+            return SetVariable.SetElement(vt, vt.value)
+        if isinstance(vt, variables.NNModuleVariable):
+            return SetVariable.SetElement(vt, tx.output.get_submodule(vt.module_key))
 
         unimplemented(f"Sets with {type(vt)} NYI")
 
@@ -868,11 +873,49 @@ class SetVariable(VariableTracker):
             )
             return result
         elif name == "__len__":
+<<<<<<< HEAD
             return ConstantVariable.create(len(self.items)).add_options(options)
         elif name == "__contains__":
             assert len(args) == 1
             assert not kwargs
             return _listlike_contains_helper(self.items, args[0], tx, options)
+=======
+            return ConstantVariable(len(self.items))
+        elif name == "__contains__":
+            assert len(args) == 1
+            assert not kwargs
+
+            search = args[0]
+
+            def _search(item):
+                if isinstance(item, variables.NNModuleVariable):
+                    return (
+                        self.tx.output.nn_modules[item.module_key]
+                        == search.as_python_constant()
+                    )
+                return item.as_python_constant() == search.as_python_constant()
+
+                x.as_python_constant() == search.as_python_constant()
+
+            if check_constant_args(args, {}) and search.is_python_constant():
+                result = any(_search(x) for x in self.items)
+                return variables.ConstantVariable(result, **options)
+
+            from .builtin import BuiltinVariable
+
+            result = None
+            for x in self.items:
+                check = BuiltinVariable(operator.eq).call_function(tx, [x, search], {})
+                if result is None:
+                    result = check
+                else:
+                    result = BuiltinVariable(operator.or_).call_function(
+                        tx, [check, result], {}
+                    )
+            if result is None:
+                return ConstantVariable(None)
+            return result
+>>>>>>> 9796ba600ac ([FSDP][WIP] Trace FSDP)
         else:
             return super().call_method(tx, name, args, kwargs)
 
