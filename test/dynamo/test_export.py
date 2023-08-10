@@ -2350,9 +2350,9 @@ def forward(self, x):
         with self.assertRaisesRegex(
             torch._dynamo.exc.UserError, r"Invalid value 20 for range \[4:7\]"
         ) as cm:
-            torch._export.export(f, (torch.tensor([20]),))
+            torch.export(f, (torch.tensor([20]),))
 
-        ep = torch._export.export(f, (torch.tensor([5]),))
+        ep = torch.export(f, (torch.tensor([5]),))
         self.assertEqual(ep(torch.tensor([6])).shape, (6, 4))
 
         FileCheck().check_count(
@@ -2373,7 +2373,7 @@ def forward(self, x):
 
             return torch.cat((empty.transpose(0, 1), torch.zeros(6, a)), 0)
 
-        ep = torch._export.export(f, (torch.tensor([6]),))
+        ep = torch.export(f, (torch.tensor([6]),))
         self.assertEqual(ep(torch.tensor([5])).shape, (10, 5))
         FileCheck().check_count(
             "torch.ops.aten.sym_constrain_range.default", 1, exactly=True

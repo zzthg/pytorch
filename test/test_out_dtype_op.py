@@ -56,7 +56,7 @@ class TestOutDtypeOp(TestCase):
         weight = torch.randint(-128, 127, (5, 5), dtype=torch.int8)
         m = M(weight)
         x = torch.randint(-128, 127, (5, 5), dtype=torch.int8)
-        ep = torch._export.export(
+        ep = torch.export(
             m,
             (x,),
         )
@@ -121,7 +121,7 @@ class TestOutDtypeOp(TestCase):
             )
 
         with self.assertRaisesRegex(ValueError, "out_dtype's first argument needs to be a functional operator"):
-            _ = torch._export.export(
+            _ = torch.export(
                 f, (torch.randint(-128, 127, (5, 5), dtype=torch.int8), torch.randint(-128, 127, (5, 5), dtype=torch.int8)),
             )
 

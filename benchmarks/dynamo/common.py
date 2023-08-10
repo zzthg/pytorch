@@ -3170,7 +3170,7 @@ def run(runner, args, original_dir=None):
         experiment = speedup_experiment
         output_filename = "inductor.csv"
     elif args.export:
-        optimize_ctx = torch._export.export
+        optimize_ctx = torch.export
         experiment = speedup_experiment
         output_filename = "export.csv"
     elif args.xla:
