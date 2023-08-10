@@ -995,12 +995,10 @@ class CheckFunctionManager:
             self,
             local=False,
         )
-
-        # We need to transplant a copy here, because some guards
-        # might get a cross ref between local and global, like L['mod_name'][G['some_key']]
-        # the inverse is illegal.
         if "G" in global_builder.scope:
             local_builder.scope["G"] = global_builder.scope["G"]
+        if "L" in local_builder.scope:
+            global_builder.scope["L"] = local_builder.scope["L"]
         # source_ref can cause a cycle, make sure we break it with weakref
         w_local = weakref.ref(local_builder)
         w_global = weakref.ref(global_builder)

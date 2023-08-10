@@ -34,6 +34,7 @@ from typing import Optional
 import torch
 import torch._inductor.test_operators
 import torch.distributed
+import torch.distributed.utils
 import torch.utils._content_store
 
 from . import comptime, external_utils, polyfill
@@ -195,6 +196,12 @@ FILENAME_INLINELIST |= set(
 ) | {
     _module_dir(torch) + "_export/wrappers.py",
 }
+
+
+if torch.distributed.is_available():
+    FILENAME_INLINELIST |= set(
+        glob.glob(_module_dir(torch) + "distributed/**/*.py", recursive=True),
+    )
 
 
 # Force inline functions under these modules, even the modules is in *_SKIPLIST.

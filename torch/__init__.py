@@ -1872,3 +1872,5 @@ else:
 
 from . import _logging
 _logging._init_logs()
+
+import torch._dynamo
