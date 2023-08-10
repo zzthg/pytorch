@@ -137,6 +137,9 @@ THPPyInterpreterFrame* THPPyInterpreterFrame_New(_PyInterpreterFrame* frame) {
   } else {                                                              \
   }
 
+// Uncomment next line to print debug message
+// #define TORCHDYNAMO_DEBUG 1
+
 #ifdef TORCHDYNAMO_DEBUG
 
 #define DEBUG_CHECK(cond) CHECK(cond)
@@ -165,8 +168,8 @@ static PyObject* profiler_start_hook = NULL;
 static PyObject* profiler_end_hook = NULL;
 static PyObject* guard_profiler_name_str = NULL; /* cached py str */
 
-static size_t cache_entry_extra_index = -1;
-static size_t dynamic_frame_state_extra_index = -2;
+// Points to the extra scratch space on the code object
+static size_t extra_index = -1;
 
 static Py_tss_t eval_frame_callback_key = Py_tss_NEEDS_INIT;
 
@@ -299,6 +302,17 @@ typedef struct cache_entry {
   struct cache_entry* next;
 } CacheEntry;
 
+// An abstraction to encapsulate all the information to be saved on the extra
+// scratch space of the code object. This enables us to reuse the same co_extra
+// field, saving extra allocations.
+typedef struct {
+  // Cache entry for the code object
+  CacheEntry* cache_entry;
+  // Frame state to detect dynamic shape dims
+  PyObject* frame_state;
+} ExtraState;
+
+
 static CacheEntry* create_cache_entry(
     CacheEntry* next,
     PyObject* guarded_code) {
@@ -322,10 +336,58 @@ static void destroy_cache_entry(CacheEntry* e) {
   free(e);
 }
 
-inline static CacheEntry* get_cache_entry(PyCodeObject* code) {
-  CacheEntry* extra = NULL;
-  _PyCode_GetExtra((PyObject*)code, cache_entry_extra_index, (void*)&extra);
+static ExtraState* create_extra_state(
+    CacheEntry* cache_entry,
+    PyObject* frame_state) {
+  // Creates a new extra state with the given cache_entry and frame_state.
+  ExtraState* e = (ExtraState*)malloc(sizeof(ExtraState));
+  DEBUG_NULL_CHECK(e);
+  e->cache_entry = cache_entry;
+  e->frame_state = frame_state;
+  return e;
+}
+
+inline static ExtraState* get_extra_state(PyCodeObject* code) {
+  ExtraState* extra = NULL;
+  _PyCode_GetExtra((PyObject*)code, extra_index, (void*)&extra);
   return extra;
+}
+
+
+inline static void set_extra_state(PyCodeObject* code, ExtraState* extra_state) {
+  // Sets the extra state on the extra scrach space of the code object.
+  _PyCode_SetExtra((PyObject*)code, extra_index, extra_state);
+}
+
+inline static CacheEntry* extract_cache_entry(ExtraState* extra) {
+  // Helper to extra the cache_entry from the extra state.
+  if (extra == NULL) {
+    return NULL;
+  }
+  return extra->cache_entry;
+}
+
+inline static void create_and_set_extra_state(
+    PyCodeObject* code,
+    CacheEntry* cache_entry,
+    PyObject* frame_state) {
+  // Creates a new extra state and put it on the extra scrach space of the code
+  // object.
+  ExtraState* extra_state = create_extra_state(cache_entry, frame_state);
+  set_extra_state(code, extra_state);
+}
+
+inline static void destroy_extra_state(PyCodeObject* code) {
+  // Destroys the extra state by deleting cache_entry, frame state and finally
+  // freeing the constructed extra state.
+  ExtraState* extra = get_extra_state(code);
+  if (extra != NULL && extra != SKIP_CODE) {
+    destroy_cache_entry(extract_cache_entry(extra));
+    PyObject* frame_state = extra->frame_state;
+    Py_XDECREF(frame_state);
+    free(extra);
+  }
+  set_extra_state(code, NULL);
 }
 
 PyObject* _debug_get_cache_entry_list(PyObject* self, PyObject* args) {
@@ -339,7 +401,7 @@ PyObject* _debug_get_cache_entry_list(PyObject* self, PyObject* args) {
   }
   PyCodeObject* code = (PyCodeObject*)object;
 
-  CacheEntry* current_node = get_cache_entry(code);
+  CacheEntry* current_node = extract_cache_entry(get_extra_state(code));
 
   PyObject* outer_list = PyList_New(0);
   if (!outer_list) {
@@ -360,22 +422,6 @@ PyObject* _debug_get_cache_entry_list(PyObject* self, PyObject* args) {
   }
   // Return the outer list
   return outer_list;
-}
-
-inline static void set_cache_entry(PyCodeObject* code, CacheEntry* extra) {
-  // TODO(jansel): would it be faster to bypass this?
-  _PyCode_SetExtra((PyObject*)code, cache_entry_extra_index, extra);
-}
-
-inline static PyObject* get_frame_state(PyCodeObject* code) {
-  PyObject* extra = NULL;
-  _PyCode_GetExtra((PyObject*)code, dynamic_frame_state_extra_index, (void*)&extra);
-  return extra;
-}
-
-inline static void set_frame_state(PyCodeObject* code, PyObject* extra) {
-  // TODO(jansel): would it be faster to bypass this?
-  _PyCode_SetExtra((PyObject*)code, dynamic_frame_state_extra_index, extra);
 }
 
 static PyObject* call_guard_fail_hook(
@@ -438,10 +484,14 @@ static PyObject* lookup(CacheEntry* e, THP_EVAL_API_FRAME_OBJECT *frame, CacheEn
     // If the hit cache entry is not the head of the linked list,
     // move it to the head
     if (prev != NULL) {
-        CacheEntry* extra = get_cache_entry(frame->f_code);
+        ExtraState* extra = get_extra_state(frame->f_code);
+        CacheEntry* old_cache_entry = extract_cache_entry(extra);
         prev->next = e->next;
-        e->next = extra;
-        set_cache_entry(frame->f_code, e);
+        e->next = old_cache_entry;
+
+        // Update the extra state to reflect the updated cache
+        extra->cache_entry = e;
+        set_extra_state(frame->f_code, extra);
     }
     return (PyObject*)e->code;
   }
@@ -663,11 +713,12 @@ static PyObject* _custom_eval_frame(
     return eval_frame_default(tstate, frame, throw_flag);
   }
 
-  CacheEntry* extra = get_cache_entry(frame->f_code);
+  ExtraState* extra = get_extra_state(frame->f_code);
   if (extra == SKIP_CODE || (callback == Py_False && extra == NULL)) {
     DEBUG_TRACE("skip %s", get_frame_name(frame));
     return eval_frame_default(tstate, frame, throw_flag);
   }
+  CacheEntry* cache_entry = extract_cache_entry(extra);
 
   // TODO(jansel): investigate directly using the "fast" representation
   // TODO(alband): This is WRONG for python3.11+ we pass in a _PyInterpreterFrame
@@ -682,7 +733,7 @@ static PyObject* _custom_eval_frame(
   if (callback == Py_False) {
     DEBUG_TRACE("In run only mode %s", get_frame_name(frame));
     PyObject* hook_record = call_profiler_start_hook(guard_profiler_name_str);
-    PyObject* maybe_cached_code = lookup(extra, frame, NULL, 0);
+    PyObject* maybe_cached_code = lookup(cache_entry, frame, NULL, 0);
     call_profiler_end_hook(hook_record);
     Py_XDECREF(hook_record);
 
@@ -708,7 +759,7 @@ static PyObject* _custom_eval_frame(
   eval_frame_callback_set(Py_None);
 
   PyObject* hook_record = call_profiler_start_hook(guard_profiler_name_str);
-  PyObject* maybe_cached_code = lookup(extra, frame, NULL, 0);
+  PyObject* maybe_cached_code = lookup(cache_entry, frame, NULL, 0);
   call_profiler_end_hook(hook_record);
   Py_XDECREF(hook_record);
   if (maybe_cached_code == NULL) {
@@ -724,16 +775,18 @@ static PyObject* _custom_eval_frame(
   }
   // cache miss
 
-  PyObject *frame_state = get_frame_state(frame->f_code);
+  PyObject *frame_state = NULL;
+  if (extra != NULL) {
+    frame_state = extra->frame_state;
+  }
   if (frame_state == NULL) {
     // TODO(voz): Replace this dict with a real FrameState object.
     frame_state = PyDict_New();
-    set_frame_state(frame->f_code, frame_state);
   }
   // TODO(alband): This is WRONG for python3.11+ we pass in a _PyInterpreterFrame
   // that gets re-interpreted as a PyObject (which it is NOT!)
   PyObject* result =
-      call_callback(callback, frame, cache_size(extra), frame_state);
+      call_callback(callback, frame, cache_size(cache_entry), frame_state);
   if (result == NULL) {
     // internal exception, returning here will leak the exception into user code
     // this is useful for debugging -- but we dont want it to happen outside of
@@ -745,17 +798,17 @@ static PyObject* _custom_eval_frame(
     return NULL;
   } else if (result != Py_None) {
     DEBUG_TRACE("create cache %s", get_frame_name(frame));
-    extra = create_cache_entry(extra, result);
+    CacheEntry* new_cache_entry = create_cache_entry(cache_entry, result);
     Py_DECREF(result);
-    set_cache_entry(frame->f_code, extra);
+    create_and_set_extra_state(frame->f_code, new_cache_entry, frame_state);
     // Re-enable custom behavior
     eval_frame_callback_set(callback);
-    return eval_custom_code(tstate, frame, extra->code, throw_flag);
+    return eval_custom_code(tstate, frame, new_cache_entry->code, throw_flag);
   } else {
     DEBUG_TRACE("create skip %s", get_frame_name(frame));
     Py_DECREF(result);
-    destroy_cache_entry(extra);
-    set_cache_entry(frame->f_code, SKIP_CODE);
+    destroy_extra_state(frame->f_code);
+    set_extra_state(frame->f_code, SKIP_CODE);
     // Re-enable custom behavior
     eval_frame_callback_set(callback);
     return eval_frame_default(tstate, frame, throw_flag);
@@ -830,11 +883,7 @@ static PyObject* reset_code(PyObject* dummy, PyObject* code) {
     return NULL;
   }
 
-  destroy_cache_entry(get_cache_entry((PyCodeObject*)code));
-  PyObject* frame_state = get_frame_state((PyCodeObject*)code);
-  Py_XDECREF(frame_state);
-  set_cache_entry((PyCodeObject*)code, NULL);
-  set_frame_state((PyCodeObject*)code, NULL);
+  destroy_extra_state((PyCodeObject*)code);
   Py_RETURN_NONE;
 }
 
@@ -854,7 +903,7 @@ static PyObject* skip_code(PyObject* dummy, PyObject* obj) {
     PyErr_SetString(PyExc_TypeError, "expected a code object");
     return NULL;
   }
-  set_cache_entry((PyCodeObject*)obj, SKIP_CODE);
+  set_extra_state((PyCodeObject*)obj, SKIP_CODE);
   Py_RETURN_NONE;
 }
 
@@ -915,17 +964,10 @@ static struct PyModuleDef _module = {
     _methods};
 
 PyObject* torch_c_dynamo_eval_frame_init(void) {
-  cache_entry_extra_index = _PyEval_RequestCodeExtraIndex(ignored);
-  if (cache_entry_extra_index < 0) {
+  extra_index = _PyEval_RequestCodeExtraIndex(ignored);
+  if (extra_index < 0) {
     PyErr_SetString(PyExc_RuntimeError,
-                    "dynamo: unable to register cache_entry extra index");
-    return NULL;
-  }
-
-  dynamic_frame_state_extra_index = _PyEval_RequestCodeExtraIndex(ignored);
-  if (dynamic_frame_state_extra_index < 0) {
-    PyErr_SetString(PyExc_RuntimeError,
-                    "dynamo: unable to register dynamic_frame_state extra index");
+                    "dynamo: unable to register extra index");
     return NULL;
   }
 
