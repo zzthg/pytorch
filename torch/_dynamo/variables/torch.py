@@ -26,6 +26,7 @@ from ..utils import (
     proxy_args_kwargs,
     specialize_args_kwargs,
     tensortype_to_dtype,
+    get_real_value,
 )
 from .base import VariableTracker
 from .ctx_manager import (
@@ -720,6 +721,11 @@ For now, dynamo will explicitly graph break when it encounters user code with th
 
                 if isinstance(data_arg, ListVariable) and check_any_unspec(data_arg):
                     unimplemented("torch.tensor call with list of unspec")
+
+                # args[0]._typed_storage()._resize_(args[1].value)
+                # return ConstantVariable(None)
+                # self.value(args[0].as_proxy().node.meta['example_value'], args[1].value)
+
             tensor_variable = wrap_fx_proxy(
                 tx=tx,
                 proxy=tx.output.create_proxy(
@@ -729,7 +735,7 @@ For now, dynamo will explicitly graph break when it encounters user code with th
                 ),
                 **options,
             )
-
+                
             if "out" in kwargs and not (
                 isinstance(kwargs["out"], variables.ConstantVariable)
                 and kwargs["out"].as_python_constant() is None
