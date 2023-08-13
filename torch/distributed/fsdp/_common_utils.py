@@ -520,4 +520,3 @@ def _no_dispatch_record_stream(tensor: torch.Tensor, stream: torch.Stream) -> No
             tensor.record_stream(stream)
     else:
         tensor.record_stream(stream)
-
