@@ -529,4 +529,3 @@ def _no_dispatch_record_stream(tensor: torch.Tensor, stream: torch.Stream) -> No
         # a better version of this would just be to check if there are any modes before disabling dispatch.
         # TODO(voz): Extend a dynamo util to answer the above, unify the codepaths here.
         tensor.record_stream(stream)
-

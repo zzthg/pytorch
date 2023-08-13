@@ -19,13 +19,14 @@ from ..source import GeneratorStateSource
 from ..utils import (
     check_constant_args,
     check_unspec_python_args,
+    get_real_value,
+    HAS_NUMPY,
     istype,
     np,
     product,
     proxy_args_kwargs,
     specialize_args_kwargs,
     tensortype_to_dtype,
-    get_real_value,
 )
 from .base import VariableTracker
 from .ctx_manager import (
@@ -728,7 +729,7 @@ For now, dynamo will explicitly graph break when it encounters user code with th
                 ),
                 **options,
             )
-                
+
             if "out" in kwargs and not (
                 isinstance(kwargs["out"], variables.ConstantVariable)
                 and kwargs["out"].as_python_constant() is None
