@@ -1374,7 +1374,7 @@ def wrap_fx_proxy(tx, proxy, example_value=None, **options):
 # SOMETHING INTO THE GRAPH.  This is sort of obvious, because you can't call
 # this function without a proxy.
 def wrap_fx_proxy_cls(
-    target_cls, tx, proxy, example_value=None, ignore_subclass=False, **options
+    target_cls, tx, proxy, example_value=None, ignore_subclass=False, allow_none=False, **options
 ):
     import torch._export.constraints
     from ..symbolic_convert import InstructionTranslatorBase
@@ -1410,7 +1410,7 @@ def wrap_fx_proxy_cls(
         return value
 
     with preserve_rng_state():
-        if example_value is None:
+        if example_value is None and not allow_none:
             example_value = get_fake_value(proxy.node, tx)
 
         # Handle recursive calls here
