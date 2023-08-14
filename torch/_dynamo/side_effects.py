@@ -382,12 +382,12 @@ class SideEffects:
             )
 
         for tensor, hook in self.tensor_hooks:
-            if tensor.source:
-                cg(tensor.source)
-                cg.extend_output(
-                    [create_instruction("LOAD_METHOD", argval="register_hook")]
-                )
-                cg(hook.source)
+            cg(tensor)
+            cg.extend_output([cg.create_load_attr("register_hook")])
+            cg(hook.source)
+            cg.extend_output(create_call_function(1, True))
+            print("Hook source", hook.source.name())
+            cg.extend_output([create_instruction("POP_TOP")])
     
     def register_hook(self, tensor, hook):
         self.tensor_hooks.append((tensor, hook))
