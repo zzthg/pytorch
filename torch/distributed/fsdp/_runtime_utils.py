@@ -501,6 +501,7 @@ def _post_forward(
         # Register pre-backward hooks to unshard the flat parameters for the
         # gradient computation (if needed)
         output = _register_pre_backward_hooks(state, module, output, handle)
+        # print("SET STATE TO IDLE")
         state.training_state = TrainingState.IDLE
         if handle:
             handle._training_state = HandleTrainingState.IDLE
@@ -650,6 +651,10 @@ def _pre_backward_hook(
     handle: FlatParamHandle,
     *unused: Any,
 ) -> Any:
+    import os
+    gpu_id = int(os.environ["LOCAL_RANK"])
+    if gpu_id == 0:
+        print("Running pre backward!", id(state))
     """
     Prepares ``_handle`` 's ``FlatParameter`` s for gradient computation.
 
@@ -660,6 +665,8 @@ def _pre_backward_hook(
     # Only run the pre-backward hook once per group of handles involved in the
     # same module forward computation
     if handle and handle._ran_pre_backward_hook:
+        if gpu_id == 0:
+            print("Not Running pre backward! Already Ran!", id(state))
         return
 
     with torch.profiler.record_function("FullyShardedDataParallel._pre_backward_hook"):
@@ -674,6 +681,8 @@ def _pre_backward_hook(
             if _is_composable(state):
                 allowed_states.append(TrainingState.FORWARD_BACKWARD)
             _assert_in_training_states(state, allowed_states)
+        if gpu_id == 0:
+            print("SET STATE TO FORWARD_BACKWARD - PRE_BACKWARD", id(state))
         state.training_state = TrainingState.FORWARD_BACKWARD
         # Queueing the post-backward callback is the only logic that is not
         # per-handle in the pre-backward hook, so we can return early here if
@@ -685,7 +694,11 @@ def _pre_backward_hook(
         if handle._needs_pre_backward_unshard:
             # If the handles have been prefetched, then there is no need to
             # call `_unshard()` again
+            if gpu_id == 0:
+                print("HANDLE _needs_pre_backward_unshard", id(state), state.training_state)
             if not handle._prefetched:
+                if gpu_id == 0:
+                    print("NOT PREFETCHED!", id(state))
                 _unshard(
                     state,
                     handle,
@@ -712,6 +725,10 @@ def _post_backward_hook(
     handle: FlatParamHandle,
     *unused: Any,
 ):
+    import os
+    gpu_id = int(os.environ["LOCAL_RANK"])
+    if gpu_id == 0:
+        print("Running post backward!", id(state), state.training_state, id(handle))
     """
     Reduce-scatters the gradient of ``handle`` 's ``FlatParameter``.
 
@@ -1011,6 +1028,7 @@ def _post_backward_final_callback(
     state: _FSDPState,
     module: nn.Module,
 ):
+    print("Post backward final")
     """
     This waits for the post-backward to finish and performs some final cleanup.
     This runs at the end of the entire backward pass and should only be called
@@ -1039,6 +1057,7 @@ def _post_backward_final_callback(
     for fsdp_state in state._all_fsdp_states:
         _catch_all_reshard(fsdp_state)
         _finalize_params(fsdp_state)
+        print("SET STATE TO IDLE", id(fsdp_state))
         fsdp_state.training_state = TrainingState.IDLE
         handle = fsdp_state._handle
         if handle:
@@ -1093,12 +1112,14 @@ def _catch_all_reshard(
 def _finalize_params(
     state: _FSDPState,
 ) -> None:
+    print("Finalizing")
     """Finalizes the parameters before the next iteration."""
     handle = state._handle
     if not handle:
         return
     flat_param = handle.flat_param
     if hasattr(flat_param, "_post_backward_hook_state"):
+        print("Hasattr _post_backward_hook_state")
         post_backward_hook_state_len = len(flat_param._post_backward_hook_state)
         expected_post_backward_hook_state_len = int(flat_param.requires_grad) + 1
         _p_assert(
@@ -1369,12 +1390,12 @@ def _register_post_backward_hook(
         "The `grad_fn` is needed to access the `AccumulateGrad` and "
         "register the post-backward hook",
     )
-    # acc_grad = temp_flat_param.grad_fn.next_functions[0][0]  # type: ignore[union-attr]
-    # assert acc_grad is not None
-    # hook_handle = acc_grad.register_hook(
-    #     functools.partial(_post_backward_hook, state, handle)
-    # )
-    # flat_param._post_backward_hook_state = (acc_grad, hook_handle)  # type: ignore[attr-defined]
+    acc_grad = temp_flat_param.grad_fn.next_functions[0][0]  # type: ignore[union-attr]
+    assert acc_grad is not None
+    hook_handle = acc_grad.register_hook(
+        functools.partial(_post_backward_hook, state, handle)
+    )
+    flat_param._post_backward_hook_state = (acc_grad, hook_handle)  # type: ignore[attr-defined]
 
 
 def _register_post_backward_reshard_only_hook(
@@ -1419,6 +1440,10 @@ def _register_post_backward_reshard_only_hook(
 def _register_post_backward_final_callback(
     state: _FSDPState, module: nn.Module
 ) -> None:
+    import os
+    gpu_id = int(os.environ["LOCAL_RANK"])
+    if gpu_id == 0:
+        print("_register_post_backward_final_callback", id(state))
     """
     Registers the post-backward final callback that runs at the end of the
     backward pass. This should be called from the root FSDP instance at the
@@ -1429,12 +1454,18 @@ def _register_post_backward_final_callback(
         "Only the root FSDP instance should register the post-backward callback",
     )
     if state._post_backward_callback_queued:
+        if gpu_id == 0:
+            print("queued, return", id(state))
         return
+    if gpu_id == 0:
+        print("NOT QUEUE", id(state))
     _assert_in_training_states(state, [TrainingState.IDLE])
     state._post_backward_callback_queued = True
     Variable._execution_engine.queue_callback(
         functools.partial(_post_backward_final_callback, state, module)
     )
+    if gpu_id == 0:
+        print("_post_backward_final_callback QUEUED", id(state))
 
 
 def _wait_for_computation_stream(
