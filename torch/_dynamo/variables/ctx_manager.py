@@ -520,6 +520,10 @@ class CUDAStreamVariable(VariableTracker):
             f"Cannot reconstruct stream {self.source} {self.value} {self.proxy}"
         )
 
+    def as_python_constant(self):
+        return self.value
+
+
 
 class WithExitFunctionVariable(VariableTracker):
     def __init__(self, ctx: ContextWrappingVariable, target, **kwargs):
