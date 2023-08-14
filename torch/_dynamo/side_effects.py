@@ -73,12 +73,14 @@ class SideEffects:
         store_attr_mutations=None,
         keepalive=None,
         save_for_backward=None,
+        tensor_hooks=None
     ):
         super().__init__()
         self.id_to_variable = id_to_variable or collections.OrderedDict()
         self.store_attr_mutations = store_attr_mutations or collections.OrderedDict()
         self.keepalive = keepalive or []
         self.save_for_backward = save_for_backward or []
+        self.tensor_hooks = tensor_hooks or []
 
     def __eq__(self, other: object) -> bool:
         assert isinstance(other, SideEffects)
@@ -119,6 +121,7 @@ class SideEffects:
             ),
             keepalive=list(self.keepalive),
             save_for_backward=self.save_for_backward,
+            tensor_hooks=self.tensor_hooks,
         )
 
     def apply(self, fn, cache=None, skip_fn=lambda _: False):
@@ -136,6 +139,7 @@ class SideEffects:
         self.save_for_backward = VariableTracker.apply(
             fn, self.save_for_backward, cache, skip_fn
         )
+        self.tensor_hooks = VariableTracker.apply(fn, self.tensor_hooks, cache, skip_fn)
 
     def __contains__(self, item):
         return id(item) in self.id_to_variable
@@ -374,6 +378,17 @@ class SideEffects:
                     create_instruction("POP_TOP"),
                 ]
             )
+
+        for tensor, hook in self.tensor_hooks:
+            if tensor.source:
+                cg(tensor.source)
+                cg.extend_output(
+                    [create_instruction("LOAD_METHOD", argval="register_hook")]
+                )
+                cg(hook.source)
+    
+    def register_hook(self, tensor, hook):
+        self.tensor_hooks.append((tensor, hook))
 
     def codegen_update_mutated(self, cg: PyCodegen):
         suffixes = []
