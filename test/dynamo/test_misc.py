@@ -6621,6 +6621,8 @@ def ___make_guard_fn():
         self.assertEqual(counter.frame_count, 1)
         self.assertTrue(isinstance(compiled, torch.Tensor))
 
+    def test_tensor_typed_storage
+
 
 class TestTracer(JitTestCase):
     def test_jit_save(self):
