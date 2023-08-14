@@ -2491,7 +2491,7 @@ class WorkHookTest(MultiProcessTestCase):
         num_hook_fired = 0
         durations: List[float] = []
 
-        def hook(work_info):
+        def hook(work_info: torch._C._distributed_c10d.WorkInfo):
             nonlocal num_hook_fired, durations
             num_hook_fired += 1
             durations.append(work_info.active_duration.total_seconds())
@@ -2519,7 +2519,7 @@ class WorkHookTest(MultiProcessTestCase):
         num_hook_fired = 0
         durations: List[float] = []
 
-        def hook(work_info):
+        def hook(work_info: torch._C._distributed_c10d.WorkInfo):
             nonlocal num_hook_fired, durations
             num_hook_fired += 1
             durations.append(work_info.active_duration.total_seconds())
@@ -2558,7 +2558,7 @@ class WorkHookTest(MultiProcessTestCase):
         num_hook_fired: Dict[int, int] = {}
         durations: Dict[OpType, List[float]] = {}
 
-        def hook(work_info):
+        def hook(work_info: torch._C._distributed_c10d.WorkInfo):
             nonlocal num_hook_fired, durations
             op_type = work_info.op_type
             if op_type not in num_hook_fired:
@@ -2612,14 +2612,16 @@ class WorkHookTest(MultiProcessTestCase):
         num_hook_fired: Dict[int, int] = {}
         durations: Dict[OpType, List[float]] = {}
 
-        def hook(work_info):
+        def hook(work_info: torch._C._distributed_c10d.WorkInfo):
             nonlocal num_hook_fired, durations
+            print(f"=== rank {self.rank} hook fired for {work_info.op_type}")
             op_type = work_info.op_type
             if op_type not in num_hook_fired:
                 num_hook_fired[op_type] = 0
                 durations[op_type] = []
             num_hook_fired[op_type] += 1
             durations[op_type].append(work_info.active_duration.total_seconds())
+            print(f"=== rank {self.rank} hook done")
 
         pg._register_on_completion_hook(hook)
 
@@ -2635,6 +2637,8 @@ class WorkHookTest(MultiProcessTestCase):
             self.assertEqual(o["world_size"], self.world_size)
 
         c10d.destroy_process_group(pg)
+
+        print(f"=== checking num_hook_fired ", num_hook_fired)
 
         self.assertTrue(OpType.ALLGATHER in num_hook_fired)
         self.assertEqual(len(num_hook_fired), 1)

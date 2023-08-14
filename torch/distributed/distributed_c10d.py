@@ -1387,8 +1387,20 @@ def destroy_process_group(group: Optional[ProcessGroup] = None):
     # We can either revive the interpreter when running hooks or keep the main one
     # alive until all works and hooks are done. Therefore, we explicitly call
     # _wait_for_pending_works() here to wait for the pending hooks to finish.
-    if pg.name().lower() == "nccl":
+    if pg.name().lower() == "nccl" and pg._has_hooks():
+        print("=== 111")
         pg._wait_for_pending_works()
+        print("=== 222 ", pg.rank(), pg.size(), pg.options._timeout)
+        """
+        _store_based_barrier(
+            pg.rank(),
+            _world.pg_map[pg][1],  # store
+            f"{pg.name()}-{pg._id()}-destroy",
+            pg.size(),
+            pg.options._timeout,
+        )
+        """
+        print("=== 333")
 
     if group is None or group == GroupMember.WORLD:
         _update_default_pg(None)
