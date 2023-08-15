@@ -10,7 +10,7 @@ import torch
 import torch._prims as prims
 import torch._prims_common as utils
 import torch.nn.functional as F
-from torch import sym_float, sym_int, Tensor
+from torch import sym_float, sym_int, Tensor, sym_min, sym_max
 from torch._decomp import register_decomposition
 from torch._prims_common import IntLike, NumberType, TensorLike, TensorSequenceType
 from torch._prims_common.wrappers import (
@@ -717,13 +717,10 @@ def slice_forward(
 
     if start_val < 0:
         start_val = 0
-    # elif start_val > sizes[dim]:
-    #     start_val = sizes[dim]
+    start_val = sym_min(sizes[dim], start_val)
 
-    # if end_val < start_val:
-    #     end_val = start_val
-    # elif end_val > sizes[dim]:
-    #     end_val = sizes[dim]
+    end_val = sym_max(start_val, end_val)
+    end_val = sym_min(end_val, sizes[dim])
 
     storage_offset = self.storage_offset() + start_val * strides[dim]
     len = end_val - start_val
