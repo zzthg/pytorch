@@ -717,13 +717,13 @@ def slice_forward(
 
     if start_val < 0:
         start_val = 0
-    elif start_val > sizes[dim]:
-        start_val = sizes[dim]
+    # elif start_val > sizes[dim]:
+    #     start_val = sizes[dim]
 
-    if end_val < start_val:
-        end_val = start_val
-    elif end_val > sizes[dim]:
-        end_val = sizes[dim]
+    # if end_val < start_val:
+    #     end_val = start_val
+    # elif end_val > sizes[dim]:
+    #     end_val = sizes[dim]
 
     storage_offset = self.storage_offset() + start_val * strides[dim]
     len = end_val - start_val

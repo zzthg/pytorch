@@ -22,6 +22,7 @@ from typing import (
     Tuple,
     TypeVar,
 )
+import traceback
 
 import torch
 from torch.utils._traceback import CapturedTraceback
