@@ -20,7 +20,6 @@
 #include <c10/core/DispatchKey.h>
 #include <c10/core/DispatchKeySet.h>
 #include <ATen/TensorSubclassLikeUtils.h>
-#include <iostream>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/NativeFunctions.h>
@@ -676,7 +675,6 @@ Tensor scaled_dot_product_attention(
     choice_int = _fused_sdp_choice_stub(query_.device().type(),
       query_, key, value, attn_mask_, dropout_p, is_causal, scale);
   }
-  std::cout << "Enter SDPA: " << choice_int << std::endl;
   sdp::SDPBackend backend = static_cast<sdp::SDPBackend>(choice_int);
   c10::optional<Tensor> attn_mask = convert_boolean_attn_mask(attn_mask_, query_.dtype());
   switch (backend) {
