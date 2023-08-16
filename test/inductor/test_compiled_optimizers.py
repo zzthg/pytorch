@@ -10,7 +10,7 @@ import torch
 import torch._inductor
 
 # The rest of the optimizers not yet imported: Adamax, ASGD, LBFGS, NAdam, RAdam, SGD, SparseAdam
-from torch.optim import Adadelta, Adagrad, Adam, AdamW, RMSprop, Rprop
+from torch.optim import Adadelta, Adagrad, Adam, AdamW, ASGD, RMSprop, Rprop
 
 from torch.testing._internal.common_utils import TEST_WITH_ROCM, TestCase
 
@@ -165,6 +165,7 @@ class CompiledOptimizerTests(TestCase):
     test_rmsprop = make_test(RMSprop, kernel_count=1, lr=0.01)
     test_adadelta = make_test(Adadelta, kernel_count=1, lr=0.01)
     test_adagrad = make_test(Adagrad, kernel_count=5, lr=0.01)
+    test_asgd = make_test(ASGD, kernel_count=3, lr=0.01)
     # test_sgd = make_test(SGD, kernel_count=1, lr=0.01)
 
     test_adam_recompile = make_recompile_test(Adam, lr=0.01)

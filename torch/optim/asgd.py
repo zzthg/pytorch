@@ -82,7 +82,7 @@ class ASGD(Optimizer):
                 # State initialization
                 if len(state) == 0:
                     state["step"] = torch.tensor(0.0)
-                    state["eta"] = torch.tensor(group["lr"])
+                    state["eta"] = torch.tensor(group["lr"], device=p.device)
                     state["mu"] = torch.tensor(1.0)
                     state["ax"] = torch.zeros_like(
                         p, memory_format=torch.preserve_format
