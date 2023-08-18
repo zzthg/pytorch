@@ -60,6 +60,7 @@ else:
         globals()[name] = getattr(torch._C._dynamo.eval_frame, name)
 
 from . import config, convert_frame, external_utils, skipfiles, utils
+from .code_context import code_context
 from .exc import CondOpArgsMismatchError, ResetRequired, UserError, UserErrorType
 from .mutation_guard import install_generation_tagging_init
 from .types import DynamoCallback
@@ -264,12 +265,20 @@ class _TorchDynamoContext:
         self.dynamic_ctx.__exit__(exc_type, exc_val, exc_tb)
         self.backend_ctx.__exit__(exc_type, exc_val, exc_tb)
 
-    def __call__(self, fn):
+    def __call__(self, fn, fx_node_meta_context=None):
         # public api for compiler config/options
         def get_compiler_config():
             return self.compiler_config
 
         fn = innermost_fn(fn)
+
+        # add context containing GraphModule to any GraphModule forward functions
+        if isinstance(fn, torch.fx.GraphModule):
+            # Assume that the underlying node metadata of `fn`,
+            # a GraphModule instance, accurately represents
+            # all instances of type(fn).
+            code_context.get_context(fn.forward.__code__)["orig_graphmodule"] = fn
+
         # Optimize the forward method of torch.nn.Module object
         if isinstance(fn, torch.nn.Module):
             mod = fn

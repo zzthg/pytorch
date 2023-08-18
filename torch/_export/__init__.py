@@ -295,7 +295,7 @@ def export(
         try:
             module_call_specs: Dict[str, Dict[str, pytree.TreeSpec]] = {}
             # TODO Horrible hack to skip dynamo
-            if isinstance(f, torch.fx.GraphModule) and _safe_to_skip_dynamo(f):
+            if False and isinstance(f, torch.fx.GraphModule) and _safe_to_skip_dynamo(f):
                 if len(constraints) > 0:
                     raise UserError(
                         UserErrorType.INVALID_INPUT,
