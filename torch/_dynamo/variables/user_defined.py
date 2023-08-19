@@ -14,7 +14,7 @@ from torch._dynamo.variables.base import VariableTracker
 
 from .. import variables
 from ..allowed_functions import is_allowed
-from ..bytecode_transformation import create_call_function
+from ..bytecode_transformation import create_instruction
 from ..exc import unimplemented
 from ..guards import GuardBuilder
 from ..source import AttrSource, ODictGetItemSource, RandomValueSource
@@ -611,17 +611,6 @@ class UserDefinedObjectVariable(UserDefinedVariable):
         ).add_options(key, self)
 
 
-class RemovableHandleVariableTracker(UserDefinedObjectVariable):
-    def __init__(self, value, name, value_type=None, **kwargs):
-        super().__init__(value, value_type, **kwargs)
-        self.name = name
-
-    def reconstruct(self, codegen):
-        codegen.append_output(codegen.create_load_global(self.name, True, add=True))
-        codegen.extend_output(create_call_function(0, False))
-        return []
-
-
 class AccumulateGradVariable(UserDefinedObjectVariable):
     def __init__(self, value, proxy, value_type=None, **kwargs):
         self.proxy = proxy
@@ -685,3 +674,19 @@ class AutogradNodeVariable(UserDefinedObjectVariable):
             result = outer_tuple_obj
             return result
         return super().var_getattr(tx, name)
+
+
+class RemovableHandleVariable(UserDefinedObjectVariable):
+    def __init__(
+        self, value, last_seen_name=None, value_type=None, mutable_local=None, **kwargs
+    ):
+        super().__init__(value, value_type, **kwargs)
+        # associated later, see code symbolic_convert and On dynamo tensor_hooks
+        self.last_seen_name = last_seen_name
+        self.mutable_local = mutable_local
+
+    def reconstruct(self, codegen):
+        if self.last_seen_name:
+            # It is an invariant that at this point, a STORE_FAST was executed for this name.
+            return [create_instruction("LOAD_FAST", argval=self.last_seen_name)]
+        return super().reconstruct(codegen)

@@ -73,7 +73,7 @@ class SideEffects:
         store_attr_mutations=None,
         keepalive=None,
         save_for_backward=None,
-        tensor_hooks=None
+        tensor_hooks=None,
     ):
         super().__init__()
         self.id_to_variable = id_to_variable or collections.OrderedDict()
@@ -89,6 +89,7 @@ class SideEffects:
             self.id_to_variable == other.id_to_variable
             and self.store_attr_mutations == other.store_attr_mutations
             and self.save_for_backward == other.save_for_backward
+            and self.tensor_hooks == other.tensor_hooks
         )
 
     def diff(self, other: "SideEffects") -> Optional[str]:
@@ -381,16 +382,44 @@ class SideEffects:
                 ]
             )
 
-        for tensor, hook in self.tensor_hooks:
+        for (
+            tensor,
+            hook,
+            handle,
+        ) in self.tensor_hooks:
+            # On dynamo tensor_hooks
+            #
+            # register_hook in the Graph: We bypass direct inclusion of register_hook calls in the graph.
+            # Instead, these are tracked and stashed as a global variable, enabling their association with tensors in
+            # the residuals. During dynamo's frame creation, these hooks are invoked seamlessly.
+            #
+            # Handling the Handle: When a user retains the register_hook result in a handle, we intercept the
+            # STORE_FAST operation to record the user-designated local variable name. This ensures the reconstructed
+            # bytecode retains this name. If no handle is defined, we simply pop the generated value to keep the
+            # stack intact.
+            #
+            # Dynamo Tensor Hooks Workflow:
+            # - Functions passed to register_hook are lifted globally.
+            # - In the "side_effects" phase of codegen, we iterate over tensors with hooks to:
+            #   - Generate the tensor.
+            #   - Issue a register_hook call on the tensor, linking to the globally stored function.
+            #   - Incorporate a handle if one was established in the eager phase.
+            # The handle's exact user-specified name, "last_seen_name", is discerned and associated during STORE_FAST.
             cg(tensor)
             cg.extend_output([cg.create_load_attr("register_hook")])
-            cg(hook.source)
+            cg(hook)
             cg.extend_output(create_call_function(1, True))
-            print("Hook source", hook.source.name())
-            cg.extend_output([create_instruction("POP_TOP")])
-    
-    def register_hook(self, tensor, hook):
-        self.tensor_hooks.append((tensor, hook))
+            if hasattr(handle, "last_seen_name") and handle.last_seen_name:
+                # register_hook stored with variable name assigned to the handle
+                cg.extend_output(
+                    [create_instruction("STORE_FAST", argval=handle.last_seen_name)]
+                )
+            else:
+                # register_hook stored w/o a variable name assigned to the handle
+                cg.extend_output([create_instruction("POP_TOP")])
+
+    def register_hook(self, tensor, hook, handle):
+        self.tensor_hooks.append((tensor, hook, handle))
 
     def codegen_update_mutated(self, cg: PyCodegen):
         suffixes = []
