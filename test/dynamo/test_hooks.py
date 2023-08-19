@@ -1,13 +1,19 @@
 # Owner(s): ["module: dynamo"]
 
+<<<<<<< HEAD
 import functools
 
+=======
+>>>>>>> 8491f5bbb62 (Store dynamo hook registrations in residuals)
 import torch
 import torch._dynamo
 import torch._dynamo.test_case
 import torch._dynamo.testing
+<<<<<<< HEAD
 from functorch.compile import nop
 from torch._functorch.aot_autograd import aot_module_simplified
+=======
+>>>>>>> 8491f5bbb62 (Store dynamo hook registrations in residuals)
 
 
 def global_hook_0(grad):
@@ -68,6 +74,7 @@ class HooksTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(v.grad, torch.tensor([3.0, 6.0, 9.0]))
         self.assertEqual(cnts.frame_count, 2)
 
+<<<<<<< HEAD
     def test_tensor_register_hook_multi_handle_return(self):
         def fn(x, y, z):
             handle = x.register_hook(lambda grad: grad * 2)
@@ -125,6 +132,8 @@ class HooksTests(torch._dynamo.test_case.TestCase):
 
         self.assertNotEqual(mod.handle, None)
 
+=======
+>>>>>>> 8491f5bbb62 (Store dynamo hook registrations in residuals)
     def test_tensor_only_register_hook_in_graph_local(self):
         def local_hook(grad):
             return grad * 2
@@ -141,6 +150,7 @@ class HooksTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(v.grad, torch.tensor([2.0, 4.0, 6.0]))
         self.assertEqual(cnts.frame_count, 0)
 
+<<<<<<< HEAD
     def test_tensor_only_register_hook_in_graph_local_inner(self):
         def fn(x):
             def local_hook(grad):
@@ -159,6 +169,8 @@ class HooksTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(v[0].grad, torch.tensor([2.0, 4.0, 6.0]))
         self.assertEqual(cnts.frame_count, 1)
 
+=======
+>>>>>>> 8491f5bbb62 (Store dynamo hook registrations in residuals)
     def test_tensor_register_hook_in_graph_local(self):
         def local_hook(grad):
             return grad * 2
