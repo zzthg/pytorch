@@ -611,7 +611,6 @@ class UserDefinedObjectVariable(UserDefinedVariable):
         ).add_options(key, self)
 
 
-<<<<<<< HEAD
 class KeyedJaggedTensorVariable(UserDefinedObjectVariable):
     @staticmethod
     def is_matching_object(obj):
@@ -629,7 +628,7 @@ class KeyedJaggedTensorVariable(UserDefinedObjectVariable):
         super().__init__(value, **kwargs)
 
     # TODO Handle getattr for _length_per_key and _offset_per_key properly.
-=======
+    
 class RemovableHandleVariableTracker(UserDefinedObjectVariable):
     def __init__(self, value, name, value_type=None, **kwargs):
         super().__init__(value, value_type, **kwargs)
@@ -704,4 +703,3 @@ class AutogradNodeVariable(UserDefinedObjectVariable):
             result = outer_tuple_obj
             return result
         return super().var_getattr(tx, name)
->>>>>>> 9796ba600ac... [FSDP][WIP] Trace FSDP

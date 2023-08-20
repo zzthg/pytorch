@@ -20,7 +20,6 @@ from ..utils import (
     check_constant_args,
     check_unspec_python_args,
     get_real_value,
-    HAS_NUMPY,
     istype,
     np,
     product,
