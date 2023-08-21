@@ -2666,7 +2666,8 @@ def cat(tensors: TensorSequenceType, dim: int = 0) -> TensorLikeType:
     memory_format = cat_compute_output_memory_format(tensors)
 
     # Filters tensors with one dimension of length zero
-    filtered = tuple(x for x in tensors if not (x.ndim == 1 and x.numel() == 0))
+    filtered = tuple(tensors)
+    #filtered = tuple(x for x in tensors if not (x.ndim == 1 and x.numel() == 0))
     if len(filtered) == 0:
         t = tensors[0]
 
