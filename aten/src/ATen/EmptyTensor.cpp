@@ -144,6 +144,28 @@ SymInt computeStorageNbytes(
   return itemsize_bytes * (storage_offset + size);
 }
 
+inline void check_size_nonnegative_helper(ArrayRef<int64_t> size) {
+  for (const auto& x : size) {
+    TORCH_CHECK(
+        x >= 0,
+        "Trying to create tensor with negative dimension ",
+        x,
+        ": ",
+        size);
+  }
+}
+
+inline void check_size_nonnegative_helper(ArrayRef<c10::SymInt> size) {
+  for (const auto& x : size) {
+    TORCH_SYM_CHECK(
+        x.sym_ge(0),
+        "Trying to create tensor with negative dimension ",
+        x,
+        ": ",
+        size);
+  }
+}
+
 template <typename T>
 TensorBase _empty_generic(
     ArrayRef<T> size,
@@ -151,7 +173,7 @@ TensorBase _empty_generic(
     c10::DispatchKeySet ks,
     ScalarType scalar_type,
     c10::optional<c10::MemoryFormat> memory_format_opt) {
-  at::detail::check_size_nonnegative(size);
+  check_size_nonnegative_helper(size);
   at::detail::raise_warning_for_complex_half(scalar_type);
   caffe2::TypeMeta dtype = scalarTypeToTypeMeta(scalar_type);
   auto size_bytes = computeStorageNbytesContiguous(size, dtype.itemsize());
