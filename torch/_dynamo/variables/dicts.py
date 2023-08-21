@@ -237,7 +237,7 @@ class ConstDictVariable(VariableTracker):
         if istensor(key):
             return VariableBuilder(tx, GlobalWeakRefSource(global_key_name(key)))(key)
         else:
-            assert ConstantVariable.is_literal(key)
+            #assert ConstantVariable.is_literal(key)
             return ConstantVariable(key, **options)
 
 

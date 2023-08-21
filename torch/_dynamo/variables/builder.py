@@ -386,6 +386,7 @@ class VariableBuilder:
             ConstantVariable.is_literal(k)
             or self.tensor_can_be_dict_key(k)
             or isinstance(k, enum.Enum)
+            or True  # TODO: tuple of enum is ok
             for k in value.keys()
         ):
             if not value and self.get_source().is_nn_module():

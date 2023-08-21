@@ -194,6 +194,7 @@ class UserDefinedObjectVariable(UserDefinedVariable):
         super().__init__(**kwargs)
         self.value = value
         self.value_type = value_type or type(value)
+        assert self.value_type is not collections.defaultdict, breakpoint()
         assert type(value) is self.value_type
 
     def __str__(self):
