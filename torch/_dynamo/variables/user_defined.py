@@ -570,7 +570,7 @@ class KeyedJaggedTensorVariable(UserDefinedObjectVariable):
     def is_matching_object(obj):
         try:
             from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
-        except (ImportError, AttributeError):
+        except ImportError:
             return False
         else:
             return type(obj) is KeyedJaggedTensor

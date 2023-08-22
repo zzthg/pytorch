@@ -75,6 +75,16 @@ def op_count(gm):
     return result
 
 
+@contextlib.contextmanager
+def disable_functorch_capture():
+    org_val = torch._dynamo.config.capture_func_transforms
+    torch._dynamo.config.capture_func_transforms = False
+    try:
+        yield
+    finally:
+        torch._dynamo.config.capture_func_transforms = org_val
+
+
 # Checks that a dict matches a dict with "regex keys". That is,
 # the keys are regex expressions.
 def assert_dict_matches_regex(self, dct, dct_with_regex_keys):
@@ -1609,13 +1619,6 @@ def forward(self, s0 : torch.SymInt, s1 : torch.SymInt, L_x_ : torch.Tensor):
 
 
 class FuncTorchHigherOrderOpTests(torch._dynamo.test_case.TestCase):
-    def run(self, result=None):
-        # capture_func_transform will be set to False (for 2.1) till we
-        # support all transforms, so manually patch it to `True`` for
-        # testing on release branch.
-        with config.patch(capture_func_transforms=True):
-            super().run(result)
-
     def _compile_check(self, fn, inputs, fullgraph=True, graph_idx=0):
         backend = EagerAndRecordGraphs()
         actual = fn(*inputs)
@@ -2136,7 +2139,7 @@ class GraphModule(torch.nn.Module):
     def test_grad_disable_capture(self):
         counters.clear()
 
-        with config.patch(capture_func_transforms=False):
+        with disable_functorch_capture():
             # We have verified above that this
             # function compiles
             def fn(x):
@@ -2636,7 +2639,7 @@ class GraphModule(torch.nn.Module):
     def test_vmap_disable_capture(self):
         counters.clear()
 
-        with config.patch(capture_func_transforms=False):
+        with disable_functorch_capture():
             # We have verified above that this
             # function compiles
             def wrapper_fn(x):
