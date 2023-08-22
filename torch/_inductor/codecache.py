@@ -920,6 +920,8 @@ class AotCodeCache:
 
                 cls.cache[key] = output_so
 
+        # This dummy wrapper is to ensure that the return type of compile_fx is
+        # a function
         def wrapper_call(*args):
             assert len(graph.graph_outputs) > 0
             return cls.cache[key], *(None for i in range(len(graph.graph_outputs) - 1))

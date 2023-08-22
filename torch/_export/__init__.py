@@ -1,3 +1,4 @@
+import copy
 import dataclasses
 import inspect
 import io
@@ -616,6 +617,7 @@ def aot_compile(
         Path to the generated shared library, and the exported program
     """
     from torch._inductor.compile_fx import compile_fx_aot
+    from torch._inductor.config import freezing
     from torch._inductor.decomposition import select_decomp_table
 
     global DECOMP_TABLE
@@ -628,7 +630,46 @@ def aot_compile(
     flat_example_inputs = fx_pytree.tree_flatten_spec(
         combine_args_kwargs(args, kwargs), ep.call_spec.in_spec  # type: ignore[arg-type]
     )
-    all_args = (*param_buffer_values, *flat_example_inputs)
 
-    so_path = torch._inductor.aot_compile(ep.graph_module, list(all_args), options)
+    if freezing or (options is not None and options.get("freezing")):
+        # Unlift the parameters
+        unlifted_module = ep.module()
+        assert isinstance(unlifted_module, torch.fx.GraphModule)
+        unlifted_module.graph.set_codegen(torch.fx.CodeGen())
+        unlifted_module.recompile()
+        graph_module = unlifted_module
+        all_args = flat_example_inputs
+    else:
+        graph_module = ep.graph_module
+        all_args = (*param_buffer_values, *flat_example_inputs)
+
+    options = (
+        {"ignore_aot_autograd": True}
+        if options is None
+        else {**options, "ignore_aot_autograd": True}
+    )
+    so_path = torch._inductor.aot_compile(graph_module, list(all_args), options)
+
+    if freezing or (options is not None and options.get("freezing")):
+        user_inputs = []
+        user_outputs = []
+        for node in unlifted_module.graph.nodes:
+            if node.op == "placeholder":
+                user_inputs.append(node.name)
+            elif node.op == "output":
+                user_outputs = [arg.name for arg in node.args[0]]
+
+        ep = ExportedProgram(
+            unlifted_module,
+            unlifted_module.graph,
+            ExportGraphSignature(
+                [], [], user_inputs, user_outputs, {}, {}, {}, None
+            ),
+            copy.deepcopy(ep.call_spec),
+            {},
+            copy.deepcopy(ep.range_constraints),
+            [],
+            []
+        )
+
     return so_path, ep
