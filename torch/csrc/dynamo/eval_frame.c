@@ -997,8 +997,10 @@ static PyObject* _custom_eval_frame(
     // extract_cache_entry returns a borrowed reference. Modifying a borrowed
     // reference seems wrong. Therefore, we directly access the
     // extra->cache_entry. extra wont be NULL here.
-    extra->cache_entry = create_cache_entry(extra->cache_entry, result);
-    Py_DECREF(result);
+    // extra->cache_entry = create_cache_entry(extra->cache_entry, result);
+    extra->cache_entry = (CacheEntry*)result;
+    // create_cache_entry(extra->cache_entry, result);
+    // Py_DECREF(result);
     // Update the existing cache_entry on the extra object. This extra object is
     // sitting on the extra scratch space, we are just changing the cache_entry
     // ptr. As a result, extra now becomes the owner of CacheEntry object. This

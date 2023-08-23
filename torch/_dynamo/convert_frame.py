@@ -42,7 +42,7 @@ from .exc import (
     unimplemented,
     Unsupported,
 )
-from .guards import CheckFunctionManager, GuardedCode
+from .guards import CheckFunctionManager
 from .hooks import Hooks
 from .output_graph import OutputGraph
 from .replay_record import ExecutionRecord
@@ -379,6 +379,7 @@ def convert_frame_assert(
             frame.f_locals,
             frame.f_builtins,
             compiler_fn,
+            cache_entry,
             one_graph,
             export,
             export_constraints,
@@ -399,6 +400,7 @@ def _compile(
     locals: Dict[str, object],
     builtins: Dict[str, object],
     compiler_fn: CompilerFn,
+    cache_entry,
     one_graph: bool,
     export: bool,
     export_constraints,
@@ -407,7 +409,7 @@ def _compile(
     frame: Optional[types.FrameType] = None,
     frame_state=None,
     compile_id=None,
-) -> Optional[GuardedCode]:
+):
     from torch.fx.experimental.validator import (
         translation_validation_enabled,
         ValidationException,
@@ -466,7 +468,7 @@ def _compile(
         one_graph: bool,
         hooks: Hooks,
         transform: Callable[[List[Instruction], Dict[str, Any]], Any],
-    ) -> Optional[GuardedCode]:
+    ):
         nonlocal output
         for attempt in itertools.count():
             try:
@@ -533,8 +535,6 @@ def _compile(
             hooks.guard_fail_fn if hooks else None,
         )
 
-        guarded_code = GuardedCode(out_code, check_fn.check_fn)
-
         if not output.is_empty_graph() and hooks.guard_export_fn is not None:
             # We should not run the guard_export_fn when Dynamo does not
             # generate any graph. This can happen in export when TorchDynamo
@@ -544,7 +544,9 @@ def _compile(
             hooks.guard_export_fn(output.guards)
 
         output.local_scope.clear()
-        return guarded_code
+        new_cache_entry = torch._dynamo.eval_frame._CacheEntry(check_fn=check_fn.check_fn, code=out_code, next=cache_entry)
+        return new_cache_entry
+        # return guarded_code
 
     with compile_context(CompileContext(compile_id)):
         try:

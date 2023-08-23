@@ -42,18 +42,12 @@ class GuardFn(Protocol):
         ...
 
 
-@dataclasses.dataclass
-class GuardedCode:
-    code: types.CodeType
-    check_fn: GuardFn
-
-
 class DynamoCallbackFn(Protocol):
     def __call__(
         self,
         frame: DynamoFrameType,
         cache_size: int,
-    ) -> Optional[GuardedCode]:
+    ):
         ...
 
 

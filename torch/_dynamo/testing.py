@@ -21,7 +21,7 @@ from .bytecode_transformation import (
     is_generator,
     transform_code_object,
 )
-from .guards import CheckFunctionManager, GuardedCode
+from .guards import CheckFunctionManager
 from .utils import same
 
 unsupported = eval_frame.unsupported
@@ -148,32 +148,32 @@ def debug_dump(name, code: types.CodeType, extra=""):
         )
 
 
-def debug_insert_nops(frame, cache_size, hooks, _):
-    """used to debug jump updates"""
-
-    def insert_nops(instructions, code_options):
-        instructions.insert(0, create_instruction("NOP"))
-        instructions.insert(0, create_instruction("NOP"))
-
-    if is_generator(frame.f_code):
-        return None
-
-    debug_checks(frame.f_code)
-    code = transform_code_object(frame.f_code, insert_nops)
-    graph = OutputGraph(
-        code_options={},
-        compiler_fn=None,
-        root_tx=None,
-        export=False,
-        export_constraints=None,
-        frame_state={"_id": 0},
-        # TODO: shouldn't this be f_locals/f_globals from frame?
-        local_scope=locals(),
-        global_scope=globals(),
-        f_code=frame.f_code,
-    )
-
-    return GuardedCode(code, CheckFunctionManager(graph).check_fn)
+# def debug_insert_nops(frame, cache_size, hooks, _):
+#     """used to debug jump updates"""
+# 
+#     def insert_nops(instructions, code_options):
+#         instructions.insert(0, create_instruction("NOP"))
+#         instructions.insert(0, create_instruction("NOP"))
+# 
+#     if is_generator(frame.f_code):
+#         return None
+# 
+#     debug_checks(frame.f_code)
+#     code = transform_code_object(frame.f_code, insert_nops)
+#     graph = OutputGraph(
+#         code_options={},
+#         compiler_fn=None,
+#         root_tx=None,
+#         export=False,
+#         export_constraints=None,
+#         frame_state={"_id": 0},
+#         # TODO: shouldn't this be f_locals/f_globals from frame?
+#         local_scope=locals(),
+#         global_scope=globals(),
+#         f_code=frame.f_code,
+#     )
+# 
+#     return GuardedCode(code, CheckFunctionManager(graph).check_fn)
 
 
 class CompileCounter:
