@@ -889,7 +889,6 @@ class OutputGraph(Checkpointable[OutputGraphState]):
             )
             self.add_output_instructions(random_calls_instructions)
 
-        breakpoint()
         if (
             stack_values
             and all(
