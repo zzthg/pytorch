@@ -257,3 +257,52 @@ class HooksTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(out.grad, out2.grad)
         
         breakpoint()
+
+    def test_intermediary_hooks_inductor_with_handle(self):
+        def simple_hook(grad):
+            return grad * 2
+
+        def f(x):
+            y = x + 1
+            handle = y.register_hook(simple_hook)
+            # handle = y.register_hook(simple_hook)
+            # handle.remove()
+            z = y + 1
+            return z
+
+        out = torch.ones([1], requires_grad=True)
+        out2 = torch.ones([1], requires_grad=True)
+        
+        failure_reason = None
+        def guard_fail_fn(failure):
+            nonlocal failure_reason
+            failure_reason = failure[0]
+
+        fn = torch._dynamo.optimize("aot_eager", nopython=True, guard_fail_fn=guard_fail_fn)(f)
+
+        # def compiler_fn(gm):
+        #     breakpoint()
+            # return torch.compile(gm, backend="inductor", fullgraph=True, dynamic=True)
+
+        # with compiled_autograd.enable(compiler_fn):
+        res = fn(out)
+        res.backward()
+        eag = f(out2)
+        eag.backward()
+        breakpoint()
+        self.assertEqual(res, eag)
+        self.assertEqual(out.grad, out2.grad)
+        
+        def simple_hook_2(grad):
+            return grad * 4
+            
+        simple_hook = simple_hook_2
+        res = fn(out)
+        res.backward()
+        eag = f(out2)
+        eag.backward()
+        breakpoint()
+        self.assertEqual(res, eag)
+        self.assertEqual(out.grad, out2.grad)
+        
+        breakpoint()

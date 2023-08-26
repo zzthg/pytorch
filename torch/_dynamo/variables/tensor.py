@@ -730,7 +730,8 @@ class TensorVariable(VariableTracker):
                 from .functions import UserFunctionVariable
                 from .builder import GraphArg
 
-                new_name = tx.store_handle(handle_variable)
+                new_name = tx.store_handle("intermed_handle", handle)
+                handle_variable.as_global = new_name
 
                 fn_var = UserFunctionVariable(dummy_grad_fn, source=src)
                 if 'hooks' not in self.as_proxy().node.meta:
