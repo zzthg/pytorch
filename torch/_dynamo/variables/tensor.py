@@ -697,8 +697,17 @@ class TensorVariable(VariableTracker):
                 name = fn_var.fn.__name__
 
             if not self.source:
+                stored_hook_fn = None
+                def record_hook_fn(tensor, hook_fn):
+                    nonlocal stored_hook_fn
+                    stored_hook_fn = hook_fn.real_fn
+                    # breakpoint()
+                    return tensor
+
+
                 def dummy_grad_fn(grad, real_fn):
-                    grad = real_fn(grad)
+                    grad = stored_hook_fn(grad)
+                    # breakpoint()
                     return grad
                 placeholder_fn = functools.partial(dummy_grad_fn, real_fn=fn)
                 placeholder_fn.real_fn = fn
@@ -721,6 +730,8 @@ class TensorVariable(VariableTracker):
                 from .functions import UserFunctionVariable
                 from .builder import GraphArg
 
+                new_name = tx.store_handle(handle_variable)
+
                 fn_var = UserFunctionVariable(dummy_grad_fn, source=src)
                 if 'hooks' not in self.as_proxy().node.meta:
                     self.as_proxy().node.meta['hooks'] = []                
@@ -730,6 +741,15 @@ class TensorVariable(VariableTracker):
                 )
                 grapharg = GraphArg(src, fn, False, None)
                 hook_proxy.node.meta['grapharg'] = grapharg
+                out_var = wrap_fx_proxy(
+                    tx,
+                    tx.output.create_proxy(
+                        "call_function", record_hook_fn, (self.as_proxy(), hook_proxy), {}
+                    ),
+                    example_value=self.as_proxy().node.meta["example_value"],
+                    **options,
+                )
+                # breakpoint()
                 self.as_proxy().register_hook(hook_proxy)
             else:
                 fn_var.source = src

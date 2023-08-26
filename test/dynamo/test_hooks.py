@@ -223,7 +223,13 @@ class HooksTests(torch._dynamo.test_case.TestCase):
 
         out = torch.ones([1], requires_grad=True)
         out2 = torch.ones([1], requires_grad=True)
-        fn = torch._dynamo.optimize("aot_eager", nopython=True)(f)
+        
+        failure_reason = None
+        def guard_fail_fn(failure):
+            nonlocal failure_reason
+            failure_reason = failure[0]
+
+        fn = torch._dynamo.optimize("aot_eager", nopython=True, guard_fail_fn=guard_fail_fn)(f)
 
         # def compiler_fn(gm):
         #     breakpoint()
