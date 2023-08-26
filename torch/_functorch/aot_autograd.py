@@ -2897,7 +2897,7 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Any], aot_config: AOTConfig, 
         # Meaning we'll need to use `retain_graph=True` to be able to backprop through x the second time.
         _indices_of_inps_to_detach = []
         bw_outs = [n for n in bw_module.graph.nodes if n.op == "output"][0].args[0]
-        breakpoint()
+        # breakpoint()
         assert len(bw_outs) == len(fw_metadata.input_info) + fw_metadata.num_outputs_rng_offset
         for i, (bw_out) in enumerate(bw_outs):
             if bw_out is None:
