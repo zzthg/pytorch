@@ -4,7 +4,7 @@ import torch
 import torch._dynamo
 import torch._dynamo.test_case
 import torch._dynamo.testing
-
+from torch._dynamo import compiled_autograd
 
 def global_hook_0(grad):
     return grad * 4
@@ -212,8 +212,8 @@ class HooksTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(out.grad, torch.Tensor([2.0]))
 
     def test_intermediary_hooks_inductor(self):
-        def simple_hook(g):
-            return g * 2
+        def simple_hook(grad):
+            return grad * 2
 
         def f(x):
             y = x + 1
@@ -221,9 +221,33 @@ class HooksTests(torch._dynamo.test_case.TestCase):
             z = y + 1
             return z
 
-        out = torch.randn(1, requires_grad=True)
+        out = torch.ones([1], requires_grad=True)
+        out2 = torch.ones([1], requires_grad=True)
         fn = torch._dynamo.optimize("aot_eager", nopython=True)(f)
+
+        # def compiler_fn(gm):
+        #     breakpoint()
+            # return torch.compile(gm, backend="inductor", fullgraph=True, dynamic=True)
+
+        # with compiled_autograd.enable(compiler_fn):
         res = fn(out)
         res.backward()
-        self.assertEqual(res, f(out))
-        self.assertEqual(out.grad, torch.Tensor([2.0]))
+        eag = f(out2)
+        eag.backward()
+        breakpoint()
+        self.assertEqual(res, eag)
+        self.assertEqual(out.grad, out2.grad)
+        
+        def simple_hook_2(grad):
+            return grad * 4
+            
+        simple_hook = simple_hook_2
+        res = fn(out)
+        res.backward()
+        eag = f(out2)
+        eag.backward()
+        breakpoint()
+        self.assertEqual(res, eag)
+        self.assertEqual(out.grad, out2.grad)
+        
+        breakpoint()

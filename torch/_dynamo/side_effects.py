@@ -411,18 +411,21 @@ class SideEffects:
             #   - Issue a register_hook call on the tensor, linking to the globally stored function.
             #   - Incorporate a handle if one was established in the eager phase.
             # The handle's exact user-specified name, "last_seen_name", is discerned and associated during STORE_FAST.
-            cg(tensor)
-            cg.extend_output([cg.create_load_attr("register_hook")])
-            cg(hook)
-            cg.extend_output(create_call_function(1, True))
-            if hasattr(handle, "last_seen_name") and handle.last_seen_name:
-                # register_hook stored with variable name assigned to the handle
-                cg.extend_output(
-                    [create_instruction("STORE_FAST", argval=handle.last_seen_name)]
-                )
-            else:
-                # register_hook stored w/o a variable name assigned to the handle
-                cg.extend_output([create_instruction("POP_TOP")])
+            if tensor.source:
+                print("Codegen on tensor", tensor.as_proxy())
+                cg(tensor)
+                cg.extend_output([cg.create_load_attr("register_hook")])
+                cg(hook)
+                cg.extend_output(create_call_function(1, True))
+                if hasattr(handle, "last_seen_name") and handle.last_seen_name:
+                    # register_hook stored with variable name assigned to the handle
+                    cg.extend_output(
+                        [create_instruction("STORE_FAST", argval=handle.last_seen_name)]
+                    )
+                else:
+                    # register_hook stored w/o a variable name assigned to the handle
+                    cg.extend_output([create_instruction("POP_TOP")])
+
 
     def codegen_update_mutated(self, cg: PyCodegen):
         suffixes = []
