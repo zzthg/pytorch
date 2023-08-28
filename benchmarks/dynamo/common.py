@@ -22,9 +22,23 @@ import time
 import weakref
 from contextlib import contextmanager
 
-from typing import Any, Callable, Mapping, NamedTuple, Optional, Tuple, Type
+from typing import (
+    Any,
+    Callable,
+    Generator,
+    List,
+    Mapping,
+    NamedTuple,
+    Optional,
+    Tuple,
+    Type,
+    TYPE_CHECKING,
+)
 from typing_extensions import Self
 from unittest.mock import MagicMock
+
+if TYPE_CHECKING:
+    from torch.onnx._internal.fx import diagnostics
 
 import numpy as np
 import pandas as pd
@@ -1468,6 +1482,142 @@ class OnnxModelFromDynamo(OnnxModelFromTorchScript):
         return self._export_output.adapt_torch_outputs_to_onnx(pt_outputs)
 
 
+class _OnnxPatch:
+    @classmethod
+    def patch_non_tensor_outputs(cls, correct_result, new_result, fp64_outputs):
+        """Patch non-tensor outputs to make them comparable with the correct result.
+
+        ONNX model always returns a flat tuple of tensors, but the PyTorch model outputs
+        `correct_result` and `fp64_outputs` can be arbitrary types. This function normalizes
+        the outputs to make them comparable with the ONNX model output.
+        """
+        try:
+            from transformers import modeling_outputs
+        except ImportError:
+            has_transformers = False
+        else:
+            has_transformers = True
+
+        if has_transformers and isinstance(
+            correct_result, modeling_outputs.ModelOutput
+        ):
+            correct_result = correct_result.to_tuple()
+            fp64_outputs = fp64_outputs.to_tuple() if fp64_outputs is not None else None
+        elif type(correct_result).__name__ in (
+            "MaskedLMOutput",
+            "Seq2SeqLMOutput",
+            "CausalLMOutputWithCrossAttentions",
+            "LongformerMaskedLMOutput",
+            "Instances",
+            "SquashedNormal",
+            "Boxes",
+            "Normal",
+            "TanhTransform",
+            "Foo",
+            "Variable",
+        ):
+            # Copied from `same` function in `torch._dynamo.utils`
+            correct_result = [
+                value
+                for key in correct_result.__dict__.keys()
+                if (value := getattr(correct_result, key)) is not None
+            ]
+            fp64_outputs = (
+                [
+                    value
+                    for key in fp64_outputs.__dict__.keys()
+                    if (value := getattr(fp64_outputs, key)) is not None
+                ]
+                if fp64_outputs is not None
+                else None
+            )
+
+        # Flatten nested tuple of tensors, i.e. past_key_values
+        correct_result = pytree.tree_flatten(correct_result)[0]
+        # Hack to put results from different runs on same device.
+        # This is needed for ONNX CPU fallback benchmark, where PyTorch eager is run on GPU.
+        # Assuming outputs from a single run are always on same device!
+        devices = [x.device for x in correct_result if isinstance(x, torch.Tensor)]
+        assert devices and all(x == devices[0] for x in devices), "All tensors must be on same device!"
+        device = devices[0]
+        new_result = pytree.tree_flatten(new_result)[0]
+        new_result = pytree.tree_map(lambda x: x.to(device=device) if isinstance(x, torch.Tensor) else x, new_result)
+        fp64_outputs = pytree.tree_flatten(fp64_outputs)[0]
+
+        return correct_result, new_result, fp64_outputs
+
+
+@dataclasses.dataclass
+class OnnxExportErrorRow:
+    device: str
+    model_name: str
+    batch_size: int
+    rule_id: Optional[str] = None
+    rule_name: Optional[str] = None
+    diagnostic_level: Optional[str] = None
+    diagnostic_message: Optional[str] = None
+    exception_type_name: Optional[str] = None
+    exception_message: Optional[str] = None
+
+    def __post_init__(self):
+        assert (
+            self.rule_id is not None
+            and self.rule_name is not None
+            and self.diagnostic_level is not None
+            and self.diagnostic_message is not None
+        ) or self.exception_type_name, (
+            "Either rule_id, rule_name, diagnostic_level and diagnostic_message "
+            "must be set or exception_type_name must be set"
+        )
+
+    @property
+    def headers(self) -> List[str]:
+        return [field.name for field in dataclasses.fields(self)]
+
+    @property
+    def row(self) -> List[str]:
+        return [getattr(self, field.name) for field in dataclasses.fields(self)]
+
+
+class OnnxExportErrorParser(object):
+    def __init__(self, device: str, model_name: str, batch_size: int):
+        self.device = device
+        self.model_name = model_name
+        self.batch_size = batch_size
+
+    def _qualified_exception_class_name(self, exception: Exception) -> str:
+        if exception.__class__.__module__ == "builtins":
+            return exception.__class__.__name__
+        return f"{exception.__class__.__module__}.{exception.__class__.__name__}"
+
+    def parse_diagnostic_context(
+        self,
+        diagnostic_context: diagnostics.DiagnosticContext,
+    ) -> Generator[OnnxExportErrorRow, Any, Any]:
+        from torch.onnx._internal.fx import diagnostics
+
+        for diagnostic in diagnostic_context.diagnostics:
+            if diagnostic.level >= diagnostics.levels.ERROR:
+                yield OnnxExportErrorRow(
+                    device=self.device,
+                    model_name=self.model_name,
+                    batch_size=self.batch_size,
+                    rule_id=diagnostic.rule.id,
+                    rule_name=diagnostic.rule.name,
+                    diagnostic_level=diagnostic.level.name,
+                    diagnostic_message=diagnostic.message,
+                )
+
+    def parse_exception(self, exception: Exception) -> OnnxExportErrorRow:
+        return OnnxExportErrorRow(
+            device=self.device,
+            model_name=self.model_name,
+            batch_size=self.batch_size,
+            exception_type_name=self._qualified_exception_class_name(exception),
+            exception_message=str(exception),
+        )
+
+
 def optimize_onnx_ctx(
     output_directory: str,
     onnx_model_cls: Type[OnnxModelFromTorchScript],
@@ -1481,7 +1631,6 @@ def optimize_onnx_ctx(
     onnx_model: Optional[OnnxModelFromTorchScript] = None
 
     def run_n_iterations_onnx(model, inputs, n=2):
-        from _onnx import reporter
         from torch.onnx._internal import exporter
         from torch.onnx._internal.fx import diagnostics
 
@@ -1492,9 +1641,7 @@ def optimize_onnx_ctx(
             output_filename.find(".csv") > 0
         ), f"expected output_filename to be a .csv, but got {output_filename}"
         output_error_filename = output_filename[:-4] + "_export_error.csv"
-        parser = reporter.ExportErrorParser(
-            current_device, current_name, current_batch_size
-        )
+        parser = OnnxExportErrorParser(current_device, current_name, current_batch_size)
         try:
             nonlocal onnx_model
             if onnx_model is None:
@@ -2176,13 +2323,11 @@ class BenchmarkRunner:
                 current_onnx_compiler == "torchscript"
                 or current_onnx_compiler == "dynamo"
             ):
-                from _onnx import patch
-
                 (
                     correct_result,
                     new_result,
                     fp64_outputs,
-                ) = patch.patch_non_tensor_outputs(
+                ) = _OnnxPatch.patch_non_tensor_outputs(
                     correct_result, new_result, fp64_outputs
                 )
 
