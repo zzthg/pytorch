@@ -1145,9 +1145,10 @@ def prod(x: List[int]):
 def split_with_sizes(
     self: Tensor, split_sizes: List[int], dim: int = 0
 ) -> List[Tensor]:
+    print(f"SPLIT {split_sizes}, {self.shape[dim]} {dim} -- {self}")
     if sum(split_sizes) != self.shape[dim]:
         raise ValueError(
-            "Split sizes don't add up to the tensor's size in the given dimension"
+            f"Split sizes don't add up to the tensor's size in the given dimension {split_sizes}, {self.shape[dim]} {dim}"
         )
     num_splits = len(split_sizes)
     splits = []
