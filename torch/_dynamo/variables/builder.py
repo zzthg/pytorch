@@ -385,7 +385,7 @@ class VariableBuilder:
             return self.wrap_listlike(value)
 
         elif istype(
-            value, (dict, collections.defaultdict, collections.OrderedDict)
+            value, (dict, collections.defaultdict, collections.OrderedDict, torch.fx.immutable_collections.immutable_dict)
         ) and all(
             ConstantVariable.is_literal(k)
             or self.tensor_can_be_dict_key(k)
@@ -453,7 +453,9 @@ class VariableBuilder:
                 source=self.source,
                 guards=make_guards(GuardBuilder.ID_MATCH),
             )
-        elif is_builtin_callable(value):
+        elif is_builtin_callable(value) or value is torch.fx.immutable_collections.immutable_dict:
+            if value is torch.fx.immutable_collections.immutable_dict:
+                value = dict
             return BuiltinVariable(
                 value,
                 source=self.source,

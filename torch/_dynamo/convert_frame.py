@@ -166,7 +166,7 @@ def has_tensor_in_frame(frame):
             return seen_ids[obj_id]
         seen_ids[obj_id] = False
 
-        if isinstance(obj, (torch.Tensor, torch.nn.Module)):
+        if isinstance(obj, (torch.Tensor, torch.nn.Module, torch.fx.node.Node)):
             seen_ids[obj_id] = True
             return seen_ids[obj_id]
         elif istype(obj, (list, tuple)):

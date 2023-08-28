@@ -114,6 +114,7 @@ FILENAME_ALLOWLIST = {
     # These are dynamo files!
     external_utils.__file__,
     comptime.__file__,  # Want to inline these helpers
+    torch.fx.interpreter.__file__,
 }
 
 if torch.distributed.is_available():

@@ -138,6 +138,10 @@ skipfiles_inline_module_allowlist = {
     torch.utils._pytree,
     torch.fx._pytree,
     torch.sparse,
+    torch.fx.interpreter,
+    torch.fx.graph_module,
+    torch.fx.graph,
+    torch.fx.node,
 }
 
 # If a string representing a PyTorch module is in this ignorelist,

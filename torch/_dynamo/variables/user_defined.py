@@ -44,6 +44,9 @@ class UserDefinedClassVariable(UserDefinedVariable):
     def as_python_constant(self):
         return self.value
 
+    def __str__(self):
+        return f"UserDefinedClassVariable({self.value})"
+
     def python_type(self):
         return type(self.value)
 

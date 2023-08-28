@@ -121,12 +121,12 @@ class Interpreter:
         if enable_io_processing:
             args = self.module.graph.process_inputs(*args)
         self.args_iter : Iterator[Any] = iter(args)
-        pbar = tqdm(total=len(self.module.graph.nodes),
-                    desc=f"{self.name}: {str(list(self.module.graph.nodes)) if config.verbose_progress else ''}",
-                    initial=0, position=0, leave=True, disable=config.disable_progress, delay=0)
+        # pbar = tqdm(total=len(self.module.graph.nodes),
+        #             desc=f"{self.name}: {str(list(self.module.graph.nodes)) if config.verbose_progress else ''}",
+        #             initial=0, position=0, leave=True, disable=config.disable_progress, delay=0)
 
         for node in self.module.graph.nodes:
-            pbar.update(1)
+            # pbar.update(1)
             if node in self.env:
                 # Short circuit if we have this value. This could
                 # be used, for example, for partial evaluation
@@ -188,11 +188,12 @@ class Interpreter:
         Returns:
             Any: The result of executing ``n``
         """
-        with self._set_current_node(n):
-            args, kwargs = self.fetch_args_kwargs_from_env(n)
-            assert isinstance(args, tuple)
-            assert isinstance(kwargs, dict)
-            return getattr(self, n.op)(n.target, args, kwargs)
+        # with self._set_current_node(n):
+        # breakpoint()
+        args, kwargs = self.fetch_args_kwargs_from_env(n)
+        assert isinstance(args, tuple)
+        assert isinstance(kwargs, dict)
+        return getattr(self, n.op)(n.target, args, kwargs)
 
     # Main Node running APIs
     @compatibility(is_backward_compatible=True)

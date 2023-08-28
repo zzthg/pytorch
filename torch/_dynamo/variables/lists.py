@@ -461,6 +461,11 @@ class TupleVariable(BaseListVariable):
         codegen.foreach(self.items)
         return [create_instruction("BUILD_TUPLE", arg=len(self.items))]
 
+    def call_hasattr(self, tx, name):
+        # TODO - Tuples are not supposed to have hasattr, but one can definitely patch it. Revisit.
+        options = VariableTracker.propagate(self)
+        return variables.ConstantVariable(False, **options)
+
     def call_method(
         self,
         tx,
