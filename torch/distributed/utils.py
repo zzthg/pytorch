@@ -163,8 +163,8 @@ def _alloc_storage(tensor: torch.Tensor, size: torch.Size) -> bool:
                 not torch._data_ptr_allocated(tensor),
                 f"Tensor storage should have been resized to be 0 but got PLACEHOLDEr",
             )
-            # tensor._typed_storage()._resize_(size.numel())
-            torch.resize_storage_(tensor, size.numel())
+            tensor._typed_storage()._resize_(size.numel())
+            # torch.resize_storage_(tensor, size.numel())
         return not already_allocated
 
 
@@ -187,8 +187,8 @@ def _free_storage(tensor: torch.Tensor) -> bool:
                 f"storage size: PLACEHOLDER\n"
                 f"tensor shape: {tensor.shape}",
             )
-            torch.resize_storage_(tensor, 0)
-            # tensor._typed_storage()._resize_(0)
+            # torch.resize_storage_(tensor, 0)
+            tensor._typed_storage()._resize_(0)
         return not already_freed
 
 
