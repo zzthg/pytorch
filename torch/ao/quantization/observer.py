@@ -1175,6 +1175,10 @@ class HistogramObserver(UniformQuantizationObserverBase):
             assert (
                 combined_min.numel() == 1 and combined_max.numel() == 1
             ), "histogram min/max values must be scalar."
+
+            # set requires_grad to False for these tensors for use in torch.histc
+            combined_min, combined_max = combined_min.detach(), combined_max.detach()
+
             combined_histogram = torch.histc(
                 x, self.bins, min=combined_min, max=combined_max  # type: ignore[arg-type]
             )
