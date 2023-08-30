@@ -3,7 +3,11 @@
 #include <torch/csrc/dynamo/guards.h>
 #include <torch/csrc/utils/python_numbers.h>
 #include <torch/extension.h>
+#include <pybind11/pybind11.h>
 #include <sstream>
+
+#define PYBIND11_DETAILED_ERROR_MESSAGES
+namespace py = pybind11;
 
 namespace {
 
@@ -538,4 +542,179 @@ PyObject* torch_c_dynamo_guards_init() {
   }
 
   return m;
+}
+
+class GuardNode {
+public:
+  // TODO - Check if we should bring source here as well.
+  virtual bool check(py::object value) = 0;
+  virtual ~GuardNode() = default;
+  virtual std::string repr() const = 0;
+};
+
+class TypeGuardNode: public GuardNode {
+public:
+  TypeGuardNode(py::object value) {
+    expected_type_ = Py_TYPE(py::cast<PyObject*>(value));
+  }
+  // bool check(PyObject* value) override {
+  bool check(py::object value) override {
+    return Py_TYPE(py::cast<PyObject*>(value)) == expected_type_;
+  }
+
+
+  ~TypeGuardNode() {
+    std::cout << "~TypeGuardNode\n";
+  }
+
+  std::string repr() const {
+    std::string tp_name = expected_type_->tp_name;
+    return "TypeGuard: type(object) is " + tp_name;
+  }
+
+private:
+  PyTypeObject* expected_type_;
+};
+
+
+class AccessAttrGuardNode: public GuardNode {
+public:
+  AccessAttrGuardNode() = default;
+
+  void add_attr_guard(std::string key, py::object py_guard) {
+    GuardNode* guard = py_guard.cast<GuardNode*>();
+    attr_guards_[key] = guard;
+  }
+
+  void add_self_guard(py::object py_guard) {
+    GuardNode* guard = py_guard.cast<GuardNode*>();
+    self_guards_.push_back(guard);
+  }
+
+  bool check(py::object value) override {
+    bool ret = true;
+    for (auto& guard : self_guards_) {
+      ret &= guard->check(value);
+    }
+    for (auto& kv : attr_guards_) {
+      auto key = kv.first;
+      if (py::hasattr(value, key.c_str())) {
+        auto* guard = kv.second;
+        py::object attr_value = py::getattr(value, key.c_str());
+        ret &= guard->check(attr_value);
+      } else {
+        return false;
+      }
+    }
+    return ret;
+  }
+
+  ~AccessAttrGuardNode() {
+    std::cout << "~AccessAttrGuardNode\n";
+  }
+
+  std::string repr() const override {
+    std::string a = "AccessAttrGuardNode:\n";
+    for (auto& guard : self_guards_) {
+      a += "  " + guard->repr() + "\n";
+    }
+    for (auto& kv : attr_guards_) {
+      auto key = kv.first;
+      auto guard = kv.second;
+      a += "  " + key + " : " + guard->repr() + "\n";
+    }
+    return a;
+  }
+
+private:
+  std::unordered_map<std::string, GuardNode*> attr_guards_;
+  std::vector<GuardNode*> self_guards_;
+};
+
+class ConstantGuardNode: public GuardNode {
+public:
+  ConstantGuardNode(py::object value) {
+    // TODO - This seems wrong - we are saving the value itself, which could
+    // incrase the ref count? In check_fn earlier, it was not a problem because
+    // we were generating strings. Do we need to convert it to C types here?
+    expected_value_ = py::cast<PyObject*>(value);
+  }
+  // bool check(PyObject* value) override {
+  bool check(py::object value) override {
+    return expected_value_ == py::cast<PyObject*>(value);
+  }
+
+  ~ConstantGuardNode() {
+    std::cout << "~ConstantGuardNode\n";
+  }
+  std::string repr() const override {
+    return "ConstantGuard ";
+  }
+private:
+  PyObject* expected_value_;
+};
+
+
+
+class TensorGuardNode: public GuardNode {
+public:
+  // TODO: Using the current TensorGuards. We should refactor this.
+  TensorGuardNode(py::handle tensor_guards) {
+    tensor_guards_ = (TensorGuards*)(tensor_guards.ptr());
+  }
+
+  bool check(py::object value) override {
+    // Convert value to a tuple to make TensorGuards_check happy
+    auto* args = PyTuple_Pack(1, py::cast<PyObject*>(value));
+
+    PyObject* ret_pyobj = TensorGuards_check(tensor_guards_, args, nullptr);
+    Py_DECREF(args);
+    bool ret = PyObject_IsTrue(ret_pyobj);
+    return ret;
+  }
+
+  std::string repr() const override {
+    return "TensorGuard";
+  }
+
+private:
+  TensorGuards* tensor_guards_;
+};
+
+
+
+
+void torch_c_dynamo_new_guards_init(PyObject* dynamo_module) {
+  // Accessible in Python via torch._C._dynamo.new_guards
+  auto _dynamo = py::handle(dynamo_module).cast<py::module>();
+  auto m = _dynamo.def_submodule("new_guards");
+
+  m.doc() = "Guard Node system";
+  py::class_<GuardNode, std::unique_ptr<GuardNode, py::nodelete>>(m, "GuardNode");
+
+  // TODO - If I don't do nodelete, the guard node gets gc'd. Learn why is that.
+  // Also this might be causing a memory leak.
+  py::class_<TypeGuardNode, GuardNode, std::unique_ptr<TypeGuardNode, py::nodelete>>(m, "TypeGuardNode")
+    .def(py::init<py::object>())
+    .def("check", &TypeGuardNode::check)
+    .def("__repr__", &TypeGuardNode::repr);
+
+  py::class_<AccessAttrGuardNode, GuardNode, std::unique_ptr<AccessAttrGuardNode, py::nodelete>>(m, "AccessAttrGuardNode")
+    .def(py::init<>())
+    .def("check", &AccessAttrGuardNode::check)
+    .def("__repr__", &AccessAttrGuardNode::repr)
+    .def("add_self_guard", &AccessAttrGuardNode::add_self_guard)
+    .def("add_attr_guard", &AccessAttrGuardNode::add_attr_guard);
+
+
+  py::class_<ConstantGuardNode, GuardNode, std::unique_ptr<ConstantGuardNode, py::nodelete>>(m, "ConstantGuardNode")
+    .def(py::init<py::object>())
+    .def("check", &ConstantGuardNode::check)
+    .def("__repr__", &ConstantGuardNode::repr);
+
+  py::class_<TensorGuardNode, GuardNode, std::unique_ptr<TensorGuardNode, py::nodelete>>(m, "TensorGuardNode")
+    .def(py::init<py::object>())
+    .def("check", &TensorGuardNode::check)
+    .def("__repr__", &TensorGuardNode::repr);
+
 }

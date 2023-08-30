@@ -705,7 +705,7 @@ For now, dynamo will explicitly graph break when it encounters user code with th
 
                     fn_ = sym_sqrt
 
-            if fn_ is torch.tensor:
+            if fn_ in (torch.tensor, torch.LongTensor):
 
                 def check_any_unspec(x):
                     # NB: This includes UnspecializedPythonVariable

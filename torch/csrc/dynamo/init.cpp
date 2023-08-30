@@ -29,6 +29,8 @@ void initDynamoBindings(PyObject* torch) {
     throw python_error();
   }
 
+  torch_c_dynamo_new_guards_init(dynamo);
+
   PyObject* compiled_autograd = torch_c_dynamo_compiled_autograd_init();
   if (compiled_autograd == nullptr ||
       PyModule_AddObject(dynamo, "compiled_autograd", compiled_autograd) != 0) {

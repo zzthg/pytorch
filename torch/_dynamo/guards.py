@@ -39,6 +39,7 @@ from torch._guards import (
     GuardBuilderBase,
     GuardEnvExpr,
     GuardSource,
+    ChainedSource,
     Source,
 )
 from torch.fx.experimental.symbolic_shapes import EqualityConstraint, SYMPY_INTERP
@@ -49,7 +50,7 @@ from torch.utils.weak import TensorWeakRef, WeakIdRef
 from . import config, convert_frame, mutation_guard
 from .eval_frame import set_guard_error_hook, set_guard_fail_hook
 from .exc import unimplemented
-from .source import LocalSource, TypeSource
+from .source import LocalSource, TypeSource, AttrSource
 from .types import GuardedCode, GuardFail, GuardFn  # noqa: F401
 from .utils import (
     dict_const_keys,
@@ -64,6 +65,8 @@ from .utils import (
     tuple_iterator_len,
 )
 
+
+from torch._C._dynamo.new_guards import *
 log = logging.getLogger(__name__)
 guards_log = torch._logging.getArtifactLogger(__name__, "guards")
 verbose_guards_log = torch._logging.getArtifactLogger(__name__, "verbose_guards")
@@ -177,6 +180,7 @@ class GuardBuilder(GuardBuilderBase):
         lookup_weakrefs: Callable[[Type[object]], ReferenceType[object]],
         user_scope: Optional[Dict[str, object]],
         check_fn_manager: CheckFunctionManager,
+        new_guard_builder,
         *,
         local: bool,
     ):
@@ -232,6 +236,8 @@ class GuardBuilder(GuardBuilderBase):
         # limit the number of cache entries with same ID_MATCH'd object.
         self.id_matched_objs: Dict[str, ReferenceType[object]] = {}
 
+        self.new_guard_builder = new_guard_builder
+
     # Warning: use this with care!  This lets you access what the current
     # value of the value you are guarding on is.  You probably don't want
     # to actually durably save this value though (because it's specific
@@ -267,6 +273,8 @@ class GuardBuilder(GuardBuilderBase):
         obj_id = self.id_ref(t)
         code = f"___check_type_id({self.arg_ref(guard)}, {obj_id})"
         self._produce_guard_code(guard, [code])
+
+        self.new_guard_builder.install(guard, TypeGuardNode(self.get(guard.name)))
 
     def BOOL_FALSE(self, guard: Guard):
         # Guard on the runtime value being 'False',
@@ -421,6 +429,9 @@ class GuardBuilder(GuardBuilderBase):
         # and NaN tests
         code.append(f"{ref} == {val!r}")
         self._produce_guard_code(guard, code)
+
+        const_guard = ConstantGuardNode(self.get(guard.name))
+        self.new_guard_builder.install(guard, const_guard)
 
     def CONSTANT_MATCH(self, guard: Guard):
         val = self.get(guard.name)
@@ -727,6 +738,15 @@ class GuardBuilder(GuardBuilderBase):
                     code.append(
                         f"hasattr({tensor_name}, '_dynamo_dynamic_indices') == False"
                     )
+
+            # TODO - Get all the other parts figured out
+            tensor_guards = TensorGuards(
+                value,
+                dynamic_dims_sizes=None,
+                dynamic_dims_strides=None,
+            )
+            self.new_guard_builder.install(guard, TensorGuardNode(tensor_guards))
+
             if len(code) > 0:
                 self._produce_guard_code(guard, code)
 
@@ -879,6 +899,62 @@ class PyExprCSEPass:
         return replacer.preface, _ast_unparse(new_node)
 
 
+
+class NewGuardBuilder:
+    def __init__(self):
+        self.processed_guards = {}
+
+
+    def print(self):
+        for k, v in self.processed_guards.items():
+            print(k)
+            print(v)
+
+    def install(self, guard, guard_node):
+        # Install the new guard node in the guard tree data structure
+        source = guard.originating_source
+        print()
+        print("## Installing", flush=True)
+        print("GUARD: ",guard)
+        print("SOURCE: ", source)
+        print("New guard node:", guard_node)
+        print("---")
+
+        if isinstance(source, LocalSource):
+            self.processed_guards[source] = guard_node
+            print("Added guard in locals")
+        elif isinstance(source, AttrSource):
+            base = source.base
+            assert base in self.processed_guards
+
+            saved_guard_node = self.processed_guards[base]
+
+            if isinstance(saved_guard_node, AccessAttrGuardNode):
+                saved_guard_node.add_attr_guard(source.member, guard_node)
+            else:
+                attr_guard = AccessAttrGuardNode()
+                attr_guard.add_self_guard(saved_guard_node)
+                attr_guard.add_attr_guard(source.member, guard_node)
+                # del self.processed_guards[base]
+                self.processed_guards[base] = attr_guard
+            print("Added guards in non local")
+            print("Added guard node:", self.processed_guards[base])
+        print("DONE")
+
+
+    def create(self, guard):
+        source = guard.originating_source
+
+        # print("#####")
+        # print(guard)
+        # while isinstance(source, ChainedSource):
+        #     print(source)
+        #     source = source.base
+        # print(source)
+        # print("#####")
+
+
+
 # NB: Naively, you'd expect this to only be a function that produces
 # the callable that constitutes the guard.  However, there is some
 # delicate handling for invalidating this check function when the
@@ -919,12 +995,14 @@ class CheckFunctionManager:
             assert builder is not None
             return builder.arg_ref(source.name())
 
+        new_guard_builder = NewGuardBuilder()
         local_builder = GuardBuilder(
             self.id_ref,
             source_ref,
             self.lookup_weakrefs,
             combine_scopes(output_graph.global_scope, output_graph.local_scope),
             self,
+            new_guard_builder,
             local=True,
         )
         global_builder = GuardBuilder(
@@ -933,6 +1011,7 @@ class CheckFunctionManager:
             self.lookup_weakrefs,
             output_graph.global_scope,
             self,
+            new_guard_builder,
             local=False,
         )
 
@@ -944,6 +1023,27 @@ class CheckFunctionManager:
         # source_ref can cause a cycle, make sure we break it with weakref
         w_local = weakref.ref(local_builder)
         w_global = weakref.ref(global_builder)
+
+
+
+        # # Guard.sort_key is really important. It ensures that guards for deeper
+        # # AttrSource are put later in the check_fn compared to the shallower
+        # # ones. This is also useful in the new guard creation infra because it
+        # # ensures that we must have the parent node for the deeper AttrSource
+        # # already in the cache.
+        # for guard in sorted(guards or [], key=Guard.sort_key):
+        #     if (
+        #         not config.guard_nn_modules
+        #         and guard.is_nn_module()
+        #         # Default func args must be guarded on.
+        #         # TODO: we could make use of 'DefaultsSource' and offer a .guard.is_defaults() API
+        #         and "__defaults__" not in guard.name
+        #         and "__kwdefaults__" not in guard.name
+        #         and (config.skip_nnmodule_hook_guards or "hooks" not in guard.name)
+        #     ):
+        #         continue
+        #     new_guard_builder.create(guard)
+
         for guard in sorted(guards or [], key=Guard.sort_key):
             if (
                 not config.guard_nn_modules
@@ -955,6 +1055,9 @@ class CheckFunctionManager:
                 and (config.skip_nnmodule_hook_guards or "hooks" not in guard.name)
             ):
                 continue
+            # print("####")
+            # print(guard.originating_source)
+            # print(guard)
             guard.create(local_builder, global_builder)
         self.check_fn = self.compile_check_fn(
             local_builder, global_builder, guards, guard_fail_fn
