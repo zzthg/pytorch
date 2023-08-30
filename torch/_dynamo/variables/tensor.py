@@ -47,6 +47,20 @@ supported_const_comparison_ops = {
     "!=": operator.ne,
 }
 
+def hook_printing_fn(*grad, real_fn):
+    print("RUNNING HOOK", real_fn)
+    return real_fn(*grad)
+
+def record_hook_fn(tensor, hook_fn):
+    # nonlocal stored_hook_fn
+    # stored_hook_fn = hook_fn.real_fn
+    print("RECORD HOOK FN", hook_fn)
+    # breakpoint()
+    print("Tensor?", tensor)
+    print("Hook?", hook_fn)
+    tensor.register_hook(functools.partial(hook_printing_fn, real_fn=hook_fn))
+    return tensor
+
 
 class TensorVariable(VariableTracker):
     """A torch.Tensor input or an intermediate value in the FX graph"""
@@ -696,26 +710,6 @@ class TensorVariable(VariableTracker):
                 fn = fn_var.fn
                 name = fn_var.fn.__name__
 
-            if not self.source:
-                stored_hook_fn = None
-                def record_hook_fn(tensor, hook_fn):
-                    nonlocal stored_hook_fn
-                    stored_hook_fn = hook_fn.real_fn
-                    # breakpoint()
-                    return tensor
-
-
-                def dummy_grad_fn(grad, real_fn):
-                    grad = stored_hook_fn(grad)
-                    # breakpoint()
-                    return grad
-                placeholder_fn = functools.partial(dummy_grad_fn, real_fn=fn)
-                placeholder_fn.real_fn = fn
-                placeholder_fn.real_name = name
-                fn = placeholder_fn
-                name = "intermediary_hook"            
-
-
             handle = self.as_proxy().node.meta["example_value"].register_hook(fn)
 
             handle_variable = variables.user_defined.RemovableHandleVariable(
@@ -726,31 +720,19 @@ class TensorVariable(VariableTracker):
             )
             src = tx.store_hook(name, fn)
             if not self.source:
-                # breakpoint()
-                from .functions import UserFunctionVariable
                 from .builder import GraphArg
 
                 new_name = tx.store_handle("intermed_handle", handle)
                 handle_variable.as_global = new_name
 
-                fn_var = UserFunctionVariable(dummy_grad_fn, source=src)
-                if 'hooks' not in self.as_proxy().node.meta:
-                    self.as_proxy().node.meta['hooks'] = []                
-                self.as_proxy().node.meta['hooks'].append((fn_var, handle))
                 hook_proxy = tx.output.root_tracer.create_graph_input(
                     name, type(fn), source=src
                 )
                 grapharg = GraphArg(src, fn, False, None)
                 hook_proxy.node.meta['grapharg'] = grapharg
-                out_var = wrap_fx_proxy(
-                    tx,
-                    tx.output.create_proxy(
-                        "call_function", record_hook_fn, (self.as_proxy(), hook_proxy), {}
-                    ),
-                    example_value=self.as_proxy().node.meta["example_value"],
-                    **options,
+                record_hook_proxy = tx.output.create_proxy(
+                    "call_function", record_hook_fn, (self.as_proxy(), hook_proxy), {}
                 )
-                # breakpoint()
                 self.as_proxy().register_hook(hook_proxy)
             else:
                 fn_var.source = src
