@@ -695,6 +695,8 @@ class TensorVariable(VariableTracker):
                 **options,
             )
         elif name == "register_hook":
+            import os
+            gpu_id = int(os.environ.get("LOCAL_RANK", 0))
             # see On dynamo tensor_hooks
             assert len(args) == 1
             fn_var = args[0]
@@ -706,6 +708,8 @@ class TensorVariable(VariableTracker):
             elif isinstance(fn_var.fn, functools.partial):
                 fn = fn_var.fn
                 name = fn_var.fn.func.__name__
+                if gpu_id == 0:
+                    print("PARTIAL ARGS IN HOOK!", fn.args, fn.keywords)
             else:
                 fn = fn_var.fn
                 name = fn_var.fn.__name__
@@ -736,6 +740,8 @@ class TensorVariable(VariableTracker):
                 # self.as_proxy().register_hook(hook_proxy)
             else:
                 fn_var.source = src
+            if gpu_id == 0:
+                print(f"Registering hook with source {self.source}, with fn {fn}")
             tx.output.side_effects.register_hook(self, fn_var, handle_variable)
             return handle_variable
 
