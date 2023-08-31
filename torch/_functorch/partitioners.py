@@ -324,6 +324,7 @@ def _tensor_nbytes(numel, dtype):
     return numel * sizes[dtype]
 
 def _size_of(node: fx.Node) -> int:
+    print("SIZEOF?", node)
     if 'val' in node.meta:
         val = node.meta['val']
         if isinstance(val, py_sym_types):
@@ -334,7 +335,11 @@ def _size_of(node: fx.Node) -> int:
         elif isinstance(val, (list, tuple)):
             return sum(_tensor_nbytes(hint_int(n.numel()), n.dtype) for n in val if isinstance(n, torch.Tensor))
         elif isinstance(val, torch.Tensor):
-            return _tensor_nbytes(hint_int(val.numel()), val.dtype)
+            try:
+                return _tensor_nbytes(hint_int(val.numel()), val.dtype)
+            except:
+                # Nonzero is fucky
+                return 999999
 
         raise RuntimeError(f"Unknown metadata type {type(val)}")
 
