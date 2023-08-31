@@ -91,9 +91,11 @@ TABLE = {
         "inductor_max_autotune_no_cudagraphs": (
             "--inference -n50 --inductor --inductor-compile-mode max-autotune-no-cudagraphs --disable-cudagraphs "
         ),
-        "torchscript-onnx": "--inference -n5 --torchscript-onnx ",
-        "dynamo-onnx": "--inference -n5 --dynamo-onnx ",
-        "dort": "--inference -n5 --backend=onnxrt "
+        "torchscript-onnx": "--inference -n50 --torchscript-onnx ",
+        "dynamo-onnx": "--inference -n50 --dynamo-onnx ",
+        "dynamo-onnx-dynamic": "--inference -n50 --dynamo-onnx --dynamic-shapes",
+        "dort": "--inference -n50 --backend=onnxrt ",
+        "dort-dynamic": "--inference -n50 --backend=onnxrt --dynamic-shapes",
     },
 }
 
