@@ -1535,6 +1535,7 @@ def wrap_fx_proxy_cls(
         return SymNodeVariable(proxy, example_value, **options)
     elif proxy.node.target in [torch.cuda.streams.Stream, torch.cuda.current_stream]:
         proxy.node.meta["example_value"] = example_value
+        print("DYNAMO CUDAStreamVariable proxy?", proxy)
         return CUDAStreamVariable(proxy, example_value, example_value.device, **options)
     elif isinstance(example_value, int) and proxy.node.target in [
         torch.sym_int,
