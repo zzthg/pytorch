@@ -96,7 +96,7 @@ class AOTInductorModelContainer {
     auto* constants_ptr = static_cast<uint8_t*>(constant_blob_.get());
     size_t bytes_read = 0;
     for (size_t i = 0; i < num_constants; i++) {
-      std::string name = model->constant_name(i);
+      const std::string name = model->constant_name(i);
       size_t data_size = model->constant_data_size(i);
       auto* internal_ptr = constants_ptr + constants_internal_offset[i];
       // Copy data to GPU memory
