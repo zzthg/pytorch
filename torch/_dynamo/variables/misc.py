@@ -11,6 +11,7 @@ import torch._numpy as tnp
 from .. import config, variables
 from ..bytecode_transformation import create_call_function, create_instruction
 from ..exc import unimplemented
+from ..guards import GuardBuilder
 from ..source import AttrSource, ODictGetItemSource
 from ..utils import check_constant_args, identity, proxy_args_kwargs
 from .base import MutableLocal, VariableTracker
@@ -790,6 +791,14 @@ class SkipFilesVariable(VariableTracker):
             return variables.lists.DequeVariable(
                 items, mutable_local=MutableLocal(), **options
             )
+        elif self.value is functools.partial:
+            guards = options.get("guards", set())
+            guards.add(self.source.make_guard(GuardBuilder.TYPE_MATCH))
+            return variables.UserDefinedClassVariable(
+                self.value,
+                source=self.source,
+                guards=guards,
+            ).call_function(tx, args, kwargs)
         else:
             try:
                 path = inspect.getfile(self.value)
