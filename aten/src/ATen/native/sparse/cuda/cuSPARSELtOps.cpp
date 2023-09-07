@@ -10,6 +10,8 @@
 #include <cusparse.h>
 #include <cstdint>
 #include <iostream>
+#include <torch/csrc/autograd/generated/variable_factories.h>
+#include <ATen/core/Tensor.h>
 
 #if AT_CUSPARSELT_ENABLED()
 
@@ -157,6 +159,13 @@ at::Tensor _cslt_sparse_mm(
       CUSPARSE_ORDER_ROW,
       CUSPARSELT_SPARSITY_50_PERCENT));
 
+  std::cout <<
+    "Sparse structured matrix A" <<
+    " | rows: " << m <<
+    " | cols: " << k <<
+    " | ld: " << k << std::endl;
+
+
   // initalize dense input descriptor
   cusparseLtMatDescriptor_t dense_input_descriptor;
   TORCH_CUDASPARSE_CHECK(cusparseLtDenseDescriptorInit(
@@ -169,10 +178,19 @@ at::Tensor _cslt_sparse_mm(
       type,
       CUSPARSE_ORDER_ROW));
 
-  // create result tensor
-  auto res = (transpose_result) ? dense_B.new_empty({n, m})
-                                : dense_B.new_empty({m, n});
+  auto a = (dense_B.is_contiguous()) ? k : n;
+  auto b = (dense_B.is_contiguous()) ? n : k;
 
+  std::cout <<
+    "Dense matrix B" <<
+    " | rows: " << a <<
+    " | cols: " << b <<
+    " | ld: " << b << std::endl;
+
+
+  // create result tensor
+  auto res = torch::empty({m, n}, c10::TensorOptions().dtype(c10::kHalf).device(dense_B.device()));
+  //auto res = dense_B.new_empty({m, n});
 
   cusparseLtMatDescriptor_t res_descriptor;
   TORCH_CUDASPARSE_CHECK(cusparseLtDenseDescriptorInit(
@@ -182,8 +200,19 @@ at::Tensor _cslt_sparse_mm(
       n,
       (transpose_result) ? m: n,
       16,
-      type,
+      CUDA_R_16F,
       (transpose_result) ? CUSPARSE_ORDER_COL : CUSPARSE_ORDER_ROW));
+
+  //cusparseLtMatDescriptor_t c_descriptor;
+  //TORCH_CUDASPARSE_CHECK(cusparseLtDenseDescriptorInit(
+      //&handle,
+      //&c_descriptor,
+      //m,
+      //n,
+      //(transpose_result) ? m: n,
+      //16,
+      //type,
+      //(transpose_result) ? CUSPARSE_ORDER_COL : CUSPARSE_ORDER_ROW));
 
   // intialize matmul
   TORCH_CUDASPARSE_CHECK(cusparseLtMatmulDescriptorInit(
