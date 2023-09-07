@@ -4215,7 +4215,9 @@ def floor_divide(self, other):
     return torch.div(self, other, rounding_mode="floor")
 
 
+
 register_inplace(aten.addbmm_, aten.addbmm)
+# register_inplace(aten.resize_storage_, aten.resize_storage)
 register_inplace(aten.addmm_, aten.addmm)
 register_inplace(aten.addmv_, aten.addmv)
 register_inplace(aten.baddbmm_, aten.baddbmm)

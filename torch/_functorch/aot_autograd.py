@@ -11,6 +11,8 @@ from functools import partial, wraps
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, NewType
 from unittest.mock import patch
 import os
+import types
+import functools
 
 from functorch import make_fx
 
@@ -1506,7 +1508,7 @@ def make_boxed_compiler(compiler):
 def call_func_with_args(f, args, steal_args=False, disable_amp=False):
     if not steal_args:
         args = list(args)
-    assert isinstance(args, list)
+    assert isinstance(args, list), args
 
     context = torch._C._DisableAutocast if disable_amp else nullcontext
     with context():
@@ -2929,8 +2931,27 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Any], aot_config: AOTConfig, 
                 torch._guards.TracingContext.get().fw_metadata = fw_metadata
 
             with TracingContext.report_output_strides() as fwd_output_strides:
+                kept_flat_args = []
+                kept_input_pos = []
+                unused_nodes = []
+                for i, node in enumerate(fw_module.graph.nodes):
+                    if node.op == "placeholder":
+                        # This should be as simple as rejecting nodes without users. Unfortunately,
+                        # there are a ton of edge cases here https://github.com/pytorch/pytorch/issues/97894, activation
+                        # checkpointing, etc. So we just skip what should be a nice invariant, in favor of explicitly rejecting
+                        # functions.
+                        # if (len(node.users) == 0))
+                        if isinstance(adjusted_flat_args[i], (types.FunctionType, functools.partial)):
+                            unused_nodes.append(node)
+                        else:
+                            kept_flat_args.append(adjusted_flat_args[i])
+                            kept_input_pos.append(i)
+                for un in unused_nodes:
+                    # Note - we could do this inline, but this is far easier to debug and computationally the same.
+                    fw_module.graph.erase_node(un)
+
                 compiled_fw_func = aot_config.fw_compiler(
-                    fw_module, adjusted_flat_args
+                    fw_module, kept_flat_args
                 )
 
         # NB: It's important to compile backwards ahead of time, as this may
@@ -3003,6 +3024,7 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Any], aot_config: AOTConfig, 
 
     class CompiledFunction(torch.autograd.Function):
         compiled_fw = compiled_fw_func
+        kept_fw_input_pos = kept_input_pos
         compiled_bw = compiled_bw_func
         metadata = fw_metadata
         num_symints_saved_for_bw = _num_symints_saved_for_bw
@@ -3023,9 +3045,13 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Any], aot_config: AOTConfig, 
             # (*mutated_inputs, *fw_outs, *fw_intermediate_bases, *saved_tensors, *saved_symints)
             # - Note that in the synthetic bases case, mutated_inputs will correspond to an updated version
             #   of the original view, and not the synthetic base
+            # Trim unused args
+            kept_args = []
+            for kept_pos in CompiledFunction.kept_fw_input_pos:
+                kept_args.append(args[kept_pos])
             fw_outs = call_func_with_args(
                 CompiledFunction.compiled_fw,
-                args,
+                kept_args,
                 disable_amp=disable_amp,
             )
 
@@ -3889,11 +3915,11 @@ def aot_module_simplified(
                     seen_sources.add(source)
                     aot_autograd_arg_pos_to_source.append(source)
             if 'hooks' in node.meta:
-                hooked_nodes.append(node)                
+                hooked_nodes.append(node)
 
     if aot_autograd_arg_pos_to_source is not None:
         assert len(full_args) == len(aot_autograd_arg_pos_to_source)
-    
+
     # for i, arg in enumerate(full_args):
     #     print(f"{i}. post compile args compile. {arg.size() if isinstance(arg, torch.Tensor) else 'n/a'} src: {aot_autograd_arg_pos_to_source[i].name()}")
 
