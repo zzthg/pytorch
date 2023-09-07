@@ -43,6 +43,7 @@ from torch._inductor import config as inductor_config
 from torch._inductor.utils import fresh_inductor_cache
 from torch._subclasses.fake_tensor import FakeTensorMode
 
+from torch.backends.cuda import sdp_kernel
 from torch.utils import _pytree as pytree
 from torch.utils._pytree import tree_map, tree_map_only
 
@@ -3483,15 +3484,16 @@ def run(runner, args, original_dir=None):
                 )
 
             model, example_inputs = runner.cast_based_on_args(model, example_inputs)
-            runner.run_one_model(
-                name,
-                model,
-                example_inputs,
-                optimize_ctx,
-                experiment,
-                explain=args.explain,
-                tag=args.tag,
-            )
+            with sdp_kernel(enable_flash=False, enable_math=True):
+                runner.run_one_model(
+                    name,
+                    model,
+                    example_inputs,
+                    optimize_ctx,
+                    experiment,
+                    explain=args.explain,
+                    tag=args.tag,
+                )
         if args.generate_aot_autograd_stats:
             stats_file = output_filename.split(".csv")[0] + "_stats.csv"
             output_csv(
