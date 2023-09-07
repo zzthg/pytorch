@@ -10,6 +10,8 @@
 #include <cusparse.h>
 #include <cstdint>
 #include <iostream>
+#include <torch/csrc/autograd/generated/variable_factories.h>
+#include <ATen/core/Tensor.h>
 
 #if AT_CUSPARSELT_ENABLED()
 
@@ -97,6 +99,7 @@ at::Tensor _cslt_compress(const Tensor& sparse_input)
 at::Tensor _cslt_sparse_mm(
     const Tensor& compressed_A,
     const Tensor& dense_B,
+    const Tensor& alpha,
     const c10::optional<Tensor>& bias_opt,
     bool transpose_result
 )
@@ -110,7 +113,7 @@ at::Tensor _cslt_sparse_mm(
   cusparseLtMatmulPlan_t plan;
   cusparseLtMatmulAlgSelection_t alg_sel;
 
-  float alpha = 1.0;
+  //float alpha = 1.0;
   float beta = 0.0;
   cudaDataType type;
   cusparseComputeType compute_type;
@@ -157,6 +160,7 @@ at::Tensor _cslt_sparse_mm(
       CUSPARSE_ORDER_ROW,
       CUSPARSELT_SPARSITY_50_PERCENT));
 
+
   // initalize dense input descriptor
   cusparseLtMatDescriptor_t dense_input_descriptor;
   TORCH_CUDASPARSE_CHECK(cusparseLtDenseDescriptorInit(
@@ -169,10 +173,11 @@ at::Tensor _cslt_sparse_mm(
       type,
       CUSPARSE_ORDER_ROW));
 
-  // create result tensor
-  auto res = (transpose_result) ? dense_B.new_empty({n, m})
-                                : dense_B.new_empty({m, n});
 
+  // create result tensor
+  auto res = torch::empty({m, n}, c10::TensorOptions().dtype(c10::kHalf).device(dense_B.device()));
+  //auto res = torch::empty({m, n}, c10::TensorOptions().device(dense_B.device()));
+  //auto res = dense_B.new_empty({m, n});
 
   cusparseLtMatDescriptor_t res_descriptor;
   TORCH_CUDASPARSE_CHECK(cusparseLtDenseDescriptorInit(
@@ -182,8 +187,19 @@ at::Tensor _cslt_sparse_mm(
       n,
       (transpose_result) ? m: n,
       16,
-      type,
+      CUDA_R_16F,
       (transpose_result) ? CUSPARSE_ORDER_COL : CUSPARSE_ORDER_ROW));
+
+  //cusparseLtMatDescriptor_t c_descriptor;
+  //TORCH_CUDASPARSE_CHECK(cusparseLtDenseDescriptorInit(
+      //&handle,
+      //&c_descriptor,
+      //m,
+      //n,
+      //(transpose_result) ? m: n,
+      //16,
+      //type,
+      //(transpose_result) ? CUSPARSE_ORDER_COL : CUSPARSE_ORDER_ROW));
 
   // intialize matmul
   TORCH_CUDASPARSE_CHECK(cusparseLtMatmulDescriptorInit(
@@ -205,6 +221,10 @@ at::Tensor _cslt_sparse_mm(
         &handle, &matmul, CUSPARSELT_MATMUL_BIAS_POINTER, &dBias, sizeof(dBias)));
   }
 
+  int enable_alpha = 1;
+  TORCH_CUDASPARSE_CHECK(cusparseLtMatmulDescSetAttribute(
+      &handle, &matmul, CUSPARSELT_MATMUL_ALPHA_VECTOR_SCALING, &enable_alpha, sizeof(enable_alpha)));
+
   TORCH_CUDASPARSE_CHECK(cusparseLtMatmulAlgSelectionInit(
       &handle, &alg_sel, &matmul, CUSPARSELT_MATMUL_ALG_DEFAULT));
 
@@ -219,10 +239,11 @@ at::Tensor _cslt_sparse_mm(
   auto workspacePtr = allocator.allocate(workspace_size);
   cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
+
   TORCH_CUDASPARSE_CHECK(cusparseLtMatmul(
       &handle,
       &plan,
-      &alpha,
+      alpha.data_ptr(),
       compressed_A.data_ptr(),
       dense_B.data_ptr(),
       &beta,
