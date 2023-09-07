@@ -340,6 +340,26 @@ class PT2EQuantizationTestCase(QuantizationTestCase):
         """
         MANUAL_SEED = 100
 
+        torch.set_printoptions(precision=8)
+
+        class PrintMod(torch.nn.Module):
+            def __init__(self, name):
+                super().__init__()
+                self.name = name
+            def forward(self, x):
+                print("*** PrintMod ", self.name, x.flatten()[:10])
+                return x
+
+        def insert_print_mod(model, node_name, model_name):
+            for n in model.graph.nodes:
+                if n.name == node_name:
+                    print_mod_name = model_name + "_print_mod_" + n.name
+                    setattr(model, print_mod_name, PrintMod(print_mod_name))
+                    with model.graph.inserting_after(n):
+                        model.graph.call_module(print_mod_name, (n,))
+                    break
+            model.recompile()
+
         # PT2 export
 
         model_pt2e = copy.deepcopy(model)
@@ -354,8 +374,6 @@ class PT2EQuantizationTestCase(QuantizationTestCase):
             example_inputs,
         )
         model_pt2e = prepare_qat_pt2e(model_pt2e, quantizer)
-        torch.manual_seed(MANUAL_SEED)
-        after_prepare_result_pt2e = model_pt2e(*example_inputs)
 
         model_fx = copy.deepcopy(model)
         #if is_per_channel:
@@ -370,8 +388,22 @@ class PT2EQuantizationTestCase(QuantizationTestCase):
         model_fx = prepare_qat_fx(
             model_fx, qconfig_mapping, example_inputs, backend_config=backend_config
         )
+
+        # DEBUG CODE
+
+        for i in range(0, 15):
+            insert_print_mod(model_pt2e, "activation_post_process_" + str(i), "pt2")
+        for i in range(0, 7):
+            insert_print_mod(model_fx, "activation_post_process_" + str(i), "fx")
+
+        torch.manual_seed(MANUAL_SEED)
+        after_prepare_result_pt2e = model_pt2e(*example_inputs)
         torch.manual_seed(MANUAL_SEED)
         after_prepare_result_fx = model_fx(*example_inputs)
+
+        with open("/tmp/model.txt", "w") as f:
+            import re
+            f.write(re.sub(";(.*)\n", "\n", str(model_pt2e)) + "\n\n\n" + re.sub(";(.*)\n", "\n", str(model_fx)) + "\n")
 
         # Verify that numerics match
         self.assertEqual(after_prepare_result_pt2e, after_prepare_result_fx)
@@ -2398,7 +2430,9 @@ class TestQuantizePT2E(PT2EQuantizationTestCase):
         self.assertTrue(dropout_node.args[2])
 
         # Do the subgraph rewriting
+        print("BEFORE dropout rewriting", str(m)[-1000:])
         torch.ao.quantization.move_model_to_eval(m)
+        print("AFTER dropout rewriting", str(m)[-1000:])
 
         # Assert that dropout op is now replaced with a clone op
         targets = [n.target for n in m.graph.nodes]
@@ -2611,18 +2645,48 @@ class TestQuantizePT2EModels(PT2EQuantizationTestCase):
         import torch.nn as nn
         from torchvision.models.quantization import mobilenet_v2
 
-        class OcclusionDetection(nn.Module):
+        class OcclusionDetection2(nn.Module):
             def __init__(self, backbone):
                 super(OcclusionDetection, self).__init__()
                 self.backbone = backbone
                 self.softmax = nn.Softmax(dim=1)
+                #self.layer0 = self.backbone.features[0]
+                #self.layer1 = self.backbone.features[1]
+                #self.layer2 = self.backbone.features[2]
+                #self.layer3 = self.backbone.features[3]
+                #self.layer4 = self.backbone.features[4]
+                #self.layer5 = self.backbone.features[5]
+                #self.layer6 = self.backbone.features[6]
+                #self.layer7 = self.backbone.features[7]
+                #self.layer8 = self.backbone.features[8]
 
             def forward(self, x):
-                x = self.backbone(x)
-                x = self.softmax(x)
+                #x = self.layer0(x)
+                #x = self.layer1(x)
+                #x = self.layer2(x)
+                #x = self.layer3(x)
+                #x = self.layer4(x)
+                #x = self.layer5(x)
+                #x = self.layer6(x)
+                #x = self.layer7(x)
+                #x = self.layer8(x)
+                #x = self.backbone(x)
+                #x = self.softmax(x)
+                return x
+
+        class OcclusionDetection(nn.Module):
+            def __init__(self, not_used):
+                super(OcclusionDetection, self).__init__()
+                self.conv = nn.Conv2d(32, 32, 3, groups=32)
+                self.bn = nn.BatchNorm2d(32)
+        
+            def forward(self, x):
+                x = self.conv(x)
+                x = self.bn(x)
                 return x
 
         with override_quantized_engine("qnnpack"):
-            example_inputs = (torch.randn(1, 3, 224, 224),)
-            m = OcclusionDetection(mobilenet_v2(num_classes=2))
+            #example_inputs = (torch.randn(1, 3, 224, 224).cuda(),)
+            example_inputs = (torch.randn(1, 32, 224, 224).cuda(),)
+            m = OcclusionDetection(mobilenet_v2(num_classes=2)).cuda()
             self._verify_symmetric_xnnpack_qat_numerics(m, example_inputs)
