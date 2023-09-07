@@ -37,6 +37,8 @@ from ..utils import (
 from .base import VariableTracker
 from .constant import ConstantVariable
 from .lists import ShapeVariable, SizeVariable
+from torch.utils._mode_utils import no_dispatch
+from torch._higher_order_ops.invoke import invoke
 
 supported_tensor_comparison_ops = {
     ">": operator.gt,
@@ -53,6 +55,14 @@ supported_const_comparison_ops = {
     "!=": operator.ne,
 }
 
+hook_registry = []
+
+def record_hook(*args, real_hook, pos):
+    breakpoint()
+    real_hook = functools.partial(real_hook, grad=args[0])
+    real_hook.__name__ = "intermediary_hook"
+    return invoke(real_hook)
+    # return torch._invoke_hook(args[0], pos)
 
 class TensorVariable(VariableTracker):
     """A torch.Tensor input or an intermediate value in the FX graph"""
@@ -673,6 +683,9 @@ class TensorVariable(VariableTracker):
             if not self.source:
                 # Intermediary
                 from .builder import GraphArg
+                original_fn = fn
+                fn = functools.partial(record_hook, real_hook=fn, pos=len(hook_registry))
+                # fn = torch._dynamo.disable(fn)
 
                 new_name = tx.store_handle("intermed_handle", handle)
                 handle_variable.as_global = new_name
@@ -686,7 +699,12 @@ class TensorVariable(VariableTracker):
                 # this is a stepping stone implementation for now, the real POR to avoid recompiling on hook identity
                 # is to add an op in forward that is persisted through functionalization, and stashes hooks in a well defined
                 # place - this allows relaxing specialization from hook identity to # of hooks (and their positions)
+
+                # hook_registry.append(original_fn)
+                hook_registry.append(original_fn)
+
                 self.as_proxy().register_hook(hook_proxy)
+
                 if fn_var.source:
                     tx.output.guards.add(
                         fn_var.source.make_guard(GuardBuilder.ID_MATCH)
