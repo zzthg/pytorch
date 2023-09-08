@@ -1155,6 +1155,52 @@ class FunctionTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(foo(), foo())
         self.assertEqual(foo(), foo())
 
+    @make_test
+    def test_partials_torch_op_kwarg(x):
+        par_mul = functools.partial(torch.mul, other=torch.ones(10, 10))
+        return par_mul(x)
+
+    @make_test
+    def test_partials_torch_op_arg(x):
+        par_mul = functools.partial(torch.mul, torch.ones(10, 10))
+        return par_mul(x)
+
+    @make_test
+    def test_partials_udf_arg(x):
+        par_mul = functools.partial(udf_mul, torch.ones(10, 10))
+        return par_mul(x)
+
+    @make_test
+    def test_partials_udf_kwarg(x):
+        par_mul = functools.partial(udf_mul, y=torch.ones(10, 10))
+        return par_mul(x)
+
+    @make_test
+    def test_partials_udf_kwarg_module(x, y):
+        par_mod = functools.partial(udf_module, mod=SmallNN())
+        return par_mod(x, y)
+
+def udf_mul(x, y):
+    return x * y
+
+class SmallNN(torch.nn.Module):
+    def __init__(self):
+        super(SmallNN, self).__init__()
+        self.fc1 = torch.nn.Linear(20, 50)
+        self.fc2 = torch.nn.Linear(50, 25)
+        self.fc3 = torch.nn.Linear(25, 10)
+
+    def forward(self, x, y):
+        combined = torch.cat((x, y), dim=1)
+        out = self.fc1(combined)
+        out = torch.nn.ReLU()(out)
+        out = self.fc2(out)
+        out = torch.nn.ReLU()(out)
+        out = self.fc3(out)
+        return out
+
+def udf_module(mod, x, y):
+    return mod(x, y)
 
 def global_func_with_default_tensor_args(
     x=torch.zeros((2, 2)), *, kw_x=torch.zeros((1, 2))
