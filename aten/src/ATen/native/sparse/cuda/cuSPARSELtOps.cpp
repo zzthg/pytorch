@@ -159,12 +159,6 @@ at::Tensor _cslt_sparse_mm(
       CUSPARSE_ORDER_ROW,
       CUSPARSELT_SPARSITY_50_PERCENT));
 
-  std::cout <<
-    "Sparse structured matrix A" <<
-    " | rows: " << m <<
-    " | cols: " << k <<
-    " | ld: " << k << std::endl;
-
 
   // initalize dense input descriptor
   cusparseLtMatDescriptor_t dense_input_descriptor;
@@ -181,11 +175,6 @@ at::Tensor _cslt_sparse_mm(
   auto a = (dense_B.is_contiguous()) ? k : n;
   auto b = (dense_B.is_contiguous()) ? n : k;
 
-  std::cout <<
-    "Dense matrix B" <<
-    " | rows: " << a <<
-    " | cols: " << b <<
-    " | ld: " << b << std::endl;
 
 
   // create result tensor
