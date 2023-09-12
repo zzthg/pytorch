@@ -23,6 +23,7 @@ static_weight_shapes = True
 
 # put correctness assertions in generated code
 size_asserts = os.environ.get("TORCHINDUCTOR_SIZE_ASSERTS", "1") == "1"
+nan_asserts = os.environ.get("TORCHINDUCTOR_NAN_ASSERTS") == "1"
 
 # enable loop reordering based on input orders
 pick_loop_orders = True
@@ -141,6 +142,7 @@ aggressive_fusion = False
 # For each fused kernel in the wrapper, comment with the nodes that get fused.
 # Useful for debugging fusion.
 debug_fusion = os.environ.get("TORCHINDUCTOR_DEBUG_FUSION") == "1"
+benchmark_fusion = os.environ.get("TORCHINDUCTOR_BENCHMARK_FUSION") == "1"
 
 # how many nodes to allow into a single fusion
 max_fusion_size = 64

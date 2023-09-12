@@ -25,7 +25,9 @@ from .utils import (
     get_device_tflops,
     get_dtype_size,
     get_gpu_dram_gbps,
+    green_text,
     has_triton,
+    red_text,
     sympy_product,
 )
 from .virtualized import V
@@ -1332,6 +1334,82 @@ class Scheduler:
             if len(self.nodes) == old_len:
                 break
 
+    def benchmark_fused_nodes(self, nodes):
+        """
+        Benchmark fused list of nodes and return the execution time
+        in milliseconds on randomly generated inputs.
+        """
+        assert len(nodes) > 0
+        device = nodes[0].get_device()
+        V.graph.scheduler = self
+        self.current_device = device
+        backend = self.get_backend(device)
+        return backend.benchmark_fused_nodes(nodes)
+
+    def speedup_by_fusion(self, node1, node2):
+        """
+        If config.benchmark_fusion is False, always return True.
+        Otherwise, return True if fusion can brings speedup.
+        """
+        if not config.benchmark_fusion:
+            return True
+
+        if node1.is_template():
+            # TODO support benchmarking epilogue fusion
+            return True
+
+        node_list_1 = node1.get_nodes()
+        device = node_list_1[0].get_device()
+
+        # don't support benchmark fusion for CPU right now.
+        if device.type == "cpu":
+            return True
+
+        node_list_2 = node2.get_nodes()
+        node_list_fused = node_list_1 + node_list_2
+
+        # We can not accurately benchmark kernel using atomic_add
+        # due to how we generate random integer inputs.
+        # Skip benchmarking them by allowing fusion.
+        if any(
+            hasattr(n.node, "data")
+            and hasattr(n.node.data, "scatter_mode")
+            and n.node.data.scatter_mode == "atomic_add"
+            for n in node_list_fused
+        ):
+            return True
+
+        from triton.compiler.errors import CompilationError
+
+        try:
+            ms1 = self.benchmark_fused_nodes(node_list_1)
+            ms2 = self.benchmark_fused_nodes(node_list_2)
+            ms_fused = self.benchmark_fused_nodes(node_list_fused)
+        except CompilationError as e:
+            # workaround triton issue: https://github.com/openai/triton/issues/2151
+            if "Loop-carried variable" in str(e):
+                return True  # allow fusion
+            else:
+                raise
+
+        if log.isEnabledFor(logging.DEBUG):
+            if ms_fused < ms1 + ms2:
+                log.debug(
+                    "Fusing %s with %s cause %sx speedup",
+                    node1.get_names(),
+                    node2.get_names(),
+                    green_text(f"{(ms1 + ms2) / ms_fused:.3f}"),
+                )
+            else:
+                log.debug(
+                    "Fusing %s with %s cause %sx slowdown",
+                    node1.get_names(),
+                    node2.get_names(),
+                    red_text(f"{ms_fused / (ms1 + ms2):.3f}"),
+                )
+
+        return ms_fused < ms1 + ms2
+
     def fuse_nodes_once(self):
         """
         Mutates self.nodes to combine nodes into FusedSchedulerNodes.
@@ -1347,6 +1425,8 @@ class Scheduler:
             if self.can_fuse(node1, node2) and not self.will_fusion_create_cycle(
                 node1, node2
             ):
+                if not self.speedup_by_fusion(node1, node2):
+                    continue
                 node3 = fuse(node1, node2)
                 fused_nodes.remove(node1)
                 fused_nodes.remove(node2)
@@ -1667,7 +1747,7 @@ class Scheduler:
                 remove = all(n in names_to_remove for n in buf.other_names)
                 if remove:
                     self.remove_inplace_buffer(name)
-                V.graph.inplaced_to_remove.add(name)
+                V.kernel.inplaced_to_remove.add(name)
             else:
                 self.remove_buffer(name)
 
@@ -1847,5 +1927,12 @@ class BaseScheduling:
     def flush(self):
         """
         Flush the generated kernel and python wrapper code to the source code file.
+        """
+        raise NotImplementedError()
+
+    def benchmark_fused_nodes(self, nodes):
+        """
+        Benchmark fused list of nodes and return the execution time
+        in milliseconds on randomly generated inputs.
         """
         raise NotImplementedError()
