@@ -40,11 +40,7 @@ from .dicts import ConstDictVariable
 from .distributed import is_constant_pg_functions, is_from_local, ProcessGroupVariable
 from .higher_order_ops import TorchHigherOrderOperatorVariable
 from .lists import ListVariable, TupleVariable
-from .torch_function import (
-    can_dispatch_torch_function,
-    dispatch_torch_function,
-    TensorWithTFOverrideVariable,
-)
+from .torch_function import can_dispatch_torch_function, dispatch_torch_function
 
 log = logging.getLogger(__name__)
 
@@ -237,7 +233,13 @@ class TorchVariable(VariableTracker):
         unspec_python_args = check_unspec_python_args(args, kwargs)
         options = VariableTracker.propagate(self, args, kwargs.values())
 
-        if self.value is torch._functorch.vmap.vmap_impl:
+        if self.value is torch.overrides.get_default_nowrap_functions:
+            from .builder import SourcelessBuilder
+
+            # [Note: __torch_function__] this function is in essence constant, and it's nice to not trace through lru cache
+            nowrap_fns = torch.overrides.get_default_nowrap_functions()
+            return SourcelessBuilder()(tx, nowrap_fns).add_options(options)
+        elif self.value is torch._functorch.vmap.vmap_impl:
             return TorchHigherOrderOperatorVariable.make(
                 self.value,
                 source=self.source,
@@ -392,20 +394,7 @@ class TorchVariable(VariableTracker):
             else:
                 unimplemented(f"torch.from_numpy(<{type(t)}>)")
         elif can_dispatch_torch_function(tx, args, kwargs):
-            # continue the assumption that args[0] is the torch function
-            # tensor until we fully trace the base torch function impl
-
-            unwrapped = dispatch_torch_function(tx, self, args, kwargs)
-            # The wrapping here follows the logic in
-            # `torch.Tensor.__torch_function__`.
-            if self.value in torch.overrides.get_default_nowrap_functions():
-                return unwrapped
-            return TensorWithTFOverrideVariable.from_tensor_var(
-                tx,
-                unwrapped,
-                args[0].class_type,
-                args[0].torch_function_fn,
-            )
+            return dispatch_torch_function(tx, self, args, kwargs)
         elif self.value in [
             torch.amp.autocast_mode.autocast,
             torch.cuda.amp.autocast,
@@ -651,6 +640,12 @@ class TorchVariable(VariableTracker):
                     return v
 
             return torch.utils._pytree.tree_map(map_fn, tree)
+        elif (len(args) > 0 or len(kwargs) > 0) and can_dispatch_torch_function(
+            tx, args, kwargs
+        ):
+            # This code block implements inlining the __torch_function__
+            # override of a tensor.
+            return dispatch_torch_function(tx, self, args, kwargs)
         elif self.value is torch.nn.utils.rnn.pack_padded_sequence:
             unimplemented("workaround https://github.com/pytorch/pytorch/issues/93501")
         elif isinstance(self.value, types.ModuleType):

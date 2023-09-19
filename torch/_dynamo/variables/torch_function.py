@@ -34,9 +34,7 @@ banned_attrs = [fn.__name__ for fn in get_default_nowrap_functions()]
 
 
 def is_torch_function_user_object(obj):
-    return hasattr(obj, "__torch_function__") and hasattr(
-        type(obj), "__torch_function__"
-    )
+    return hasattr(obj, "__torch_function__")
 
 
 def call_torch_function(

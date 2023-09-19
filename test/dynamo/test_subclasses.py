@@ -3,6 +3,7 @@ import contextlib
 import functools
 
 import torch
+import torch._C
 
 import torch._dynamo.test_case
 import torch._dynamo.testing
@@ -16,12 +17,96 @@ from torch._higher_order_ops.wrap import wrap
 from torch.fx.experimental.symbolic_shapes import DimDynamic, ShapeEnv
 
 
+class SigmoidToExpSubclass(torch.Tensor):
+    @classmethod
+    def __torch_function__(cls, func, types, args=(), kwargs=None):
+        if kwargs is None:
+            kwargs = {}
+
+        if func == torch.Tensor.sigmoid:
+            super().__torch_function__(torch.Tensor.exp, types, args, kwargs)
+
+        return super().__torch_function__(func, types, args, kwargs)
+
+
+class DummyShapeSubclass(torch.Tensor):
+    @classmethod
+    def __torch_function__(cls, func, types, args=(), kwargs=None):
+        if kwargs is None:
+            kwargs = {}
+
+        if func == torch.Tensor.shape.__get__:
+            return torch.Size((1, 1))
+
+        return super().__torch_function__(func, types, args, kwargs)
+
+
+class PassthroughLeftAddSubclass(torch.Tensor):
+    @classmethod
+    def __torch_function__(cls, func, types, args=(), kwargs=None):
+        if kwargs is None:
+            kwargs = {}
+
+        if func == torch.add:
+            return args[0]
+
+        return super().__torch_function__(func, types, args, kwargs)
+
+
+class PassthroughRightAddSubclassLeft(PassthroughLeftAddSubclass):
+    @classmethod
+    def __torch_function__(cls, func, types, args=(), kwargs=None):
+        if kwargs is None:
+            kwargs = {}
+
+        if func == torch.add:
+            return args[1]
+
+        return super().__torch_function__(func, types, args, kwargs)
+
+
+class PassthroughRightAddSubclass(torch.Tensor):
+    @classmethod
+    def __torch_function__(cls, func, types, args=(), kwargs=None):
+        if kwargs is None:
+            kwargs = {}
+
+        if func == torch.add:
+            return args[1]
+
+        return super().__torch_function__(func, types, args, kwargs)
+
+
+class PassthroughMulSubclass(torch.Tensor):
+    @classmethod
+    def __torch_function__(cls, func, types, args=(), kwargs=None):
+        if kwargs is None:
+            kwargs = {}
+
+        if func == torch.mul:
+            return args[0]
+
+        return super().__torch_function__(func, types, args, kwargs)
+
+
 class MockSubclass(torch.Tensor):
     @classmethod
     def __torch_function__(cls, func, types, args=(), kwargs=None):
         if kwargs is None:
             kwargs = {}
-        return func(*args, **kwargs)
+        return super().__torch_function__(func, types, args, kwargs)
+
+
+GLOBAL_TEST_SUBCLASSES = {
+    PassthroughLeftAddSubclass,
+    PassthroughRightAddSubclass,
+    PassthroughRightAddSubclassLeft,
+    PassthroughMulSubclass,
+    MockSubclass,
+    SigmoidToExpSubclass,
+    DummyShapeSubclass,
+}
+compile_full_eager = torch.compile(backend="eager", fullgraph=True)
 
 
 class EagerRecordGraphAndInputs:
@@ -39,7 +124,7 @@ class EagerRecordGraphAndInputs:
 def preserve_subclass_config():
     old_subclass_set = set(torch._dynamo.config.traceable_tensor_subclasses)
     try:
-        torch._dynamo.config.traceable_tensor_subclasses.add(MockSubclass)
+        torch._dynamo.config.traceable_tensor_subclasses.update(GLOBAL_TEST_SUBCLASSES)
         yield
     finally:
         torch._dynamo.config.traceable_tensor_subclasses.clear()
@@ -94,7 +179,7 @@ class SubclassTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(cnt.frame_count, 2)
 
     def test_return_subclass(self):
-        @torch.compile(backend="eager", fullgraph=True)
+        @compile_full_eager
         def fn(x):
             return MockSubclass(torch.add(x, 1.0))
 
@@ -113,7 +198,7 @@ class SubclassTests(torch._dynamo.test_case.TestCase):
 
         torch._dynamo.config.traceable_tensor_subclasses.add(LocalSubclass)
 
-        @torch.compile(backend="eager", fullgraph=True)
+        @compile_full_eager
         def fn(x):
             return LocalSubclass(torch.add(x, 1.0))
 
@@ -121,6 +206,108 @@ class SubclassTests(torch._dynamo.test_case.TestCase):
 
         res = fn(input)
         self.assertIsInstance(res, LocalSubclass)
+
+    def test_multi_subclass_dispatch_notimpl(self):
+        @compile_full_eager
+        def fn(x, y, z):
+            return torch.sqrt(z), torch.div(x, y)
+
+        with self.assertRaisesRegex(
+            torch._dynamo.exc.Unsupported, "returned NotImplemented"
+        ):
+            input0 = torch.ones(2, 2).as_subclass(PassthroughLeftAddSubclass)
+            input1 = torch.ones(2, 2).as_subclass(PassthroughMulSubclass)
+            fn(input0, input1, torch.ones(2, 2))
+
+    def test_multi_subclass_dispatch_subclass_tiebreak(self):
+        @compile_full_eager
+        def fn(x, y, z):
+            return torch.sqrt(z), torch.add(x, y)
+
+        input0 = torch.ones(2, 2).as_subclass(PassthroughLeftAddSubclass)
+        input1 = torch.zeros(2, 2).as_subclass(PassthroughRightAddSubclass)
+
+        _, res = fn(input0, input1, torch.ones(2, 2))
+
+        self.assertEqual(res, input0)
+
+    def test_multi_subclass_dispatch_ordering_tiebreak(self):
+        @compile_full_eager
+        def fn(x, y, z):
+            return torch.sqrt(z), torch.add(x, y)
+
+        input0 = torch.ones(2, 2).as_subclass(PassthroughLeftAddSubclass)
+        input1 = torch.zeros(2, 2).as_subclass(PassthroughRightAddSubclassLeft)
+
+        _, res = fn(input0, input1, torch.ones(2, 2))
+
+        self.assertEqual(res, input1)
+
+    def test_multi_subclass_dispatch_first_notimpl(self):
+        @compile_full_eager
+        def fn(x, y, z):
+            return torch.sqrt(z), torch.add(x, y)
+
+        input0 = torch.ones(2, 2).as_subclass(PassthroughMulSubclass)
+        input1 = torch.zeros(2, 2).as_subclass(PassthroughLeftAddSubclass)
+
+        _, res = fn(input0, input1, torch.ones(2, 2))
+
+        self.assertEqual(res, input0)
+
+    def test_torch_function_trace(self):
+        def fn(x, y):
+            return torch.sqrt(y), torch.add(x, 10.0)
+
+        fn_opt = compile_full_eager(fn)
+
+        input = torch.ones(2, 2).as_subclass(PassthroughLeftAddSubclass)
+        _, res_exp = fn(input, torch.ones(2, 2))
+        _, res_act = fn_opt(input, torch.ones(2, 2))
+
+        self.assertEqual(res_exp, res_act)
+        self.assertEqual(res_act, torch.ones(2, 2))
+
+    def test_torch_function_trace_other_arg_positions(self):
+        def fn(x, y):
+            return torch.sqrt(y), torch.add(torch.ones(3, 3), x)
+
+        fn_opt = compile_full_eager(fn)
+
+        input = torch.ones(2, 2).as_subclass(PassthroughLeftAddSubclass)
+        _, res_exp = fn(input, torch.ones(2, 2))
+        _, res_act = fn_opt(input, torch.ones(2, 2))
+
+        self.assertEqual(res_exp, res_act)
+        self.assertEqual(res_act, torch.ones(3, 3))
+
+    def test_torch_function_call_on_method(self):
+        x = torch.ones(2, 2)
+        wrapped = x.as_subclass(SigmoidToExpSubclass)
+
+        def fn(w):
+            return w.sigmoid()
+
+        fn_opt = compile_full_eager(fn)
+
+        res_exp = fn(wrapped)
+        res_act = fn_opt(wrapped)
+
+        self.assertEqual(res_exp, res_act)
+
+    def test_torch_function_call_on_attr(self):
+        x = torch.ones(2, 2)
+        wrapped = x.as_subclass(DummyShapeSubclass)
+
+        def fn(w):
+            return w.shape
+
+        fn_opt = compile_full_eager(fn)
+
+        res_exp = fn(wrapped)
+        res_act = fn_opt(wrapped)
+
+        self.assertEqual(res_exp, res_act)
 
     def test_compile_with_fake_tensor_dynamic_dim(self):
         x = torch.randn([3, 4])
