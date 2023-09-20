@@ -269,12 +269,12 @@ class GuardManagerTests(torch._dynamo.test_case.TestCase):
             "foo": 5,
             "bar": PairImpostor(1, 2),
         }
-        result, first_debug_info = guard_manager.check_with_debug_info(
+        result, first_debug_info = guard_manager.debug_check(
             f_locals_perturbed
         )
         self.assertFalse(result)
         self.assertTrue("Expected Pair but got" in first_debug_info.failure_reason)
-        result, second_debug_info = guard_manager.check_with_debug_info(
+        result, second_debug_info = guard_manager.debug_check(
             f_locals_perturbed
         )
         self.assertFalse(result)

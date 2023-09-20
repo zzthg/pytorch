@@ -603,8 +603,8 @@ struct GuardDebugInfo {
 class LeafGuard {
  public:
   // Runs the guard and prepares a GuardDebugInfo object.
-  std::pair<bool, GuardDebugInfo> check_with_debug_info(py::object value) {
-    bool result = run_guards(value);
+  std::pair<bool, GuardDebugInfo> debug_check(py::object value) {
+    bool result = check(value);
     if (result == false) {
       std::string reason = get_failure_reason(value);
       return std::make_pair(result, GuardDebugInfo(0, reason));
@@ -612,12 +612,7 @@ class LeafGuard {
     return std::make_pair(result, GuardDebugInfo(0, "PASS"));
   }
 
-  // Runs the guard
-  bool check(py::object value) {
-    return run_guards(value);
-  }
-
-  virtual bool run_guards(py::object value) = 0;
+  virtual bool check(py::handle value) = 0;
   virtual std::string get_failure_reason(py::object value) = 0;
   virtual ~LeafGuard() = default;
 };
@@ -645,7 +640,7 @@ class PythonLambdaGuard : public LeafGuard {
   }
 
   // Runs the lambda function with the current f_locals value.
-  bool run_guards(py::object value) override {
+  bool check(py::handle value) override {
     return py::cast<bool>(_guard_check_fn(value));
   }
 
@@ -828,10 +823,10 @@ class GuardManager {
   }
 
   bool check(py::object value) {
-    return check_with_debug_info(value).first;
+    return debug_check(value).first;
   }
 
-  std::pair<bool, GuardDebugInfo> check_with_debug_info(py::object value) {
+  std::pair<bool, GuardDebugInfo> debug_check(py::object value) {
     const std::pair<bool, GuardDebugInfo> result_pair = run_guards(value);
     if (result_pair.first == false) {
       _fail_count += 1;
@@ -846,7 +841,7 @@ class GuardManager {
     // Iterate over leaf guards
     for (const auto& guard : _leaf_guards) {
       const std::pair<bool, GuardDebugInfo>& tmp =
-          guard->check_with_debug_info(value);
+          guard->debug_check(value);
       result &= tmp.first;
       debug_num_guards_executed++;
       // TODO (janimesh): Does this check adds overhead?
@@ -865,7 +860,7 @@ class GuardManager {
     for (const auto& accessor : _accessors) {
       auto& manager = accessor->get_guard_manager();
       const std::pair<bool, GuardDebugInfo>& tmp =
-          manager->check_with_debug_info(accessor->access(value));
+          manager->debug_check(accessor->access(value));
       result &= tmp.first;
       auto& debug_info = tmp.second;
       debug_num_guards_executed += debug_info.num_guards_executed;
@@ -882,12 +877,12 @@ class GuardManager {
     if (result == false and failed_on_first == false) {
       // Inplace sort the child guards by fail count. This moves the guard with
       // higher fail count earlier in the queue, and enables fail fast for the
-      // next check_with_debug_info.
+      // next debug_check.
 
       // An alternate implementation was to use priority queue directly on
       // _accessors, but it was rejected because of the complexity of
       // popping and creating a new pq on each run_guards. Moreover, this sort
-      // is happening on the unhappy path when check_with_debug_info guard
+      // is happening on the unhappy path when debug_check guard
       // fails. So, its probably ok.
       std::sort(
           _accessors.begin(),
@@ -1036,7 +1031,7 @@ PyObject* torch_c_dynamo_guards_init() {
           "get_leaf_guards",
           &GuardManager::get_leaf_guards,
           py::return_value_policy::reference)
-      .def("check_with_debug_info", &GuardManager::check_with_debug_info)
+      .def("debug_check", &GuardManager::debug_check)
       .def(
           "add_lambda_guard",
           [](GuardManager& self,
