@@ -579,7 +579,11 @@ static struct PyModuleDef _module = {
  * failure. The data structure is also accessible in Python.
  */
 struct GuardDebugInfo {
-  GuardDebugInfo(int num_guards_executed, std::string failure_reason) {
+  GuardDebugInfo(
+      bool result,
+      std::string failure_reason,
+      int num_guards_executed) {
+    this->result = result;
     this->num_guards_executed = num_guards_executed;
     this->failure_reason = failure_reason;
   }
@@ -589,6 +593,9 @@ struct GuardDebugInfo {
         std::to_string(num_guards_executed) +
         ", failure_reason=" + failure_reason + ")";
   }
+
+  // Whether the guard passed or failed.
+  bool result;
 
   // Failure reason for a leaf guard.
   std::string failure_reason;
@@ -602,16 +609,6 @@ struct GuardDebugInfo {
  */
 class LeafGuard {
  public:
-  // Runs the guard and prepares a GuardDebugInfo object.
-  std::pair<bool, GuardDebugInfo> debug_check(py::object value) {
-    bool result = check(value);
-    if (result == false) {
-      std::string reason = get_failure_reason(value);
-      return std::make_pair(result, GuardDebugInfo(0, reason));
-    }
-    return std::make_pair(result, GuardDebugInfo(0, "PASS"));
-  }
-
   virtual bool check(py::handle value) = 0;
   virtual std::string get_failure_reason(py::object value) = 0;
   virtual ~LeafGuard() = default;
@@ -692,6 +689,7 @@ class GuardAccessor {
  private:
   // Guard manager corresponding to the retrieved value from the GuardAccessor.
   std::unique_ptr<GuardManager> _guard_manager;
+
  protected:
   // accessor key could be py::str for getattr, getitem or py::function for
   // lambda accessor.
@@ -822,50 +820,27 @@ class GuardManager {
     return _accessors.back()->get_guard_manager().get();
   }
 
+  // Runs the leaf guards check and then child managers check function.
+  //
+  // NB: There is some code DUPLICATION between this and debug_check function.
+  // This is intentional. check function is in the hot path and is kept very
+  // simple. The purpose of debug_check function is to get guard failure
+  // reasoning to understand recompilations. debug_check function does not
+  // change the state of the guard, e.g., it does not shuffle the guards and
+  // does not change the fail count. For simplicity, we duplicate the code here.
   bool check(py::object value) {
-    return debug_check(value).first;
-  }
-
-  std::pair<bool, GuardDebugInfo> debug_check(py::object value) {
-    const std::pair<bool, GuardDebugInfo> result_pair = run_guards(value);
-    if (result_pair.first == false) {
-      _fail_count += 1;
-    }
-    return result_pair;
-  }
-
-  std::pair<bool, GuardDebugInfo> run_guards(py::object value) {
-    int debug_num_guards_executed = 0;
     bool result = true;
-
     // Iterate over leaf guards
     for (const auto& guard : _leaf_guards) {
-      const std::pair<bool, GuardDebugInfo>& tmp =
-          guard->debug_check(value);
-      result &= tmp.first;
-      debug_num_guards_executed++;
-      // TODO (janimesh): Does this check adds overhead?
-      if (result == false) {
-        auto& debug_info = tmp.second;
-        return std::make_pair(
-            result,
-            GuardDebugInfo(
-                debug_num_guards_executed, debug_info.failure_reason));
-      }
+      result = result && guard->check(value);
     }
 
-    // Iterate over accessors
-    std::string reason = "";
+    // Iterate over accessors.
     bool failed_on_first = true;
     for (const auto& accessor : _accessors) {
       auto& manager = accessor->get_guard_manager();
-      const std::pair<bool, GuardDebugInfo>& tmp =
-          manager->debug_check(accessor->access(value));
-      result &= tmp.first;
-      auto& debug_info = tmp.second;
-      debug_num_guards_executed += debug_info.num_guards_executed;
-      if (result == false) {
-        reason = debug_info.failure_reason;
+      result = result && manager->check(accessor->access(value));
+      if (!result) {
         break;
       }
       failed_on_first = false;
@@ -874,7 +849,7 @@ class GuardManager {
     // failed_on_first is just an optimization to avoid sorting if we are
     // failing on the first accessor itself. This is helpful when we have
     // already sorted the guards once, and dont need to sort again.
-    if (result == false and failed_on_first == false) {
+    if (!result && !failed_on_first) {
       // Inplace sort the child guards by fail count. This moves the guard with
       // higher fail count earlier in the queue, and enables fail fast for the
       // next debug_check.
@@ -893,8 +868,43 @@ class GuardManager {
                 b->get_guard_manager()->fail_count();
           });
     }
-    return std::make_pair(
-        result, GuardDebugInfo(debug_num_guards_executed, reason));
+
+    if (!result) {
+      _fail_count += 1;
+    }
+    return result;
+  }
+
+  // This function has some code duplication with function check. This is
+  // deliberate to keep check function simple and fast.
+  GuardDebugInfo debug_check(py::object value) {
+    bool result = true;
+    int num_guards_executed = 0;
+    // Iterate over leaf guards
+    for (const auto& guard : _leaf_guards) {
+      result = result && guard->check(value);
+      num_guards_executed++;
+      if (!result) {
+        return GuardDebugInfo(
+            false, guard->get_failure_reason(value), num_guards_executed);
+      }
+    }
+
+    // Iterate over accessors
+    for (const auto& accessor : _accessors) {
+      auto& manager = accessor->get_guard_manager();
+      const GuardDebugInfo& debug_info =
+          manager->debug_check(accessor->access(value));
+      result = result && debug_info.result;
+      num_guards_executed += debug_info.num_guards_executed;
+      if (result == false) {
+        return GuardDebugInfo(
+            false, debug_info.failure_reason, num_guards_executed);
+        break;
+      }
+    }
+
+    return GuardDebugInfo(true, "", num_guards_executed);
   }
 
   int fail_count() const {
@@ -985,9 +995,10 @@ PyObject* torch_c_dynamo_guards_init() {
   auto py_m = py::handle(m).cast<py::module>();
   py::class_<GuardDebugInfo, std::unique_ptr<GuardDebugInfo>>(
       py_m, "GuardDebugInfo")
-      .def(py::init<int, std::string>())
-      .def_readonly("num_guards_executed", &GuardDebugInfo::num_guards_executed)
+      .def(py::init<bool, std::string, int>())
+      .def_readonly("result", &GuardDebugInfo::result)
       .def_readonly("failure_reason", &GuardDebugInfo::failure_reason)
+      .def_readonly("num_guards_executed", &GuardDebugInfo::num_guards_executed)
       .def("__repr__", &GuardDebugInfo::repr);
 
   // Leaf Guards
