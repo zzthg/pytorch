@@ -80,13 +80,16 @@ def supported_dtype_of_cpp_wrapper(dtype, cuda):
 
 def may_get_constant_buffer_dtype(constant_buffer):
     assert isinstance(
-        constant_buffer, (sympy.Symbol, sympy.Expr, sympy.core.numbers.Integer)
+        constant_buffer, (sympy.Symbol, sympy.Expr, sympy.core.numbers.Integer, sympy.logic.boolalg.Boolean)
     ), "get_constant_buffer_dtype only supports input of sympy.Symbol, sympy.Expr or sympy.core.numbers.Integer"
     if isinstance(constant_buffer, sympy.core.numbers.Integer):
         return torch.int64
 
     if isinstance(constant_buffer, sympy.Expr):
         return get_sympy_Expr_dtype(constant_buffer)
+
+    if isinstance(constant_buffer, sympy.logic.boolalg.Boolean):
+        return torch.bool
 
     if constant_buffer.is_integer:
         return torch.int64
@@ -671,7 +674,7 @@ class GraphLowering(torch.fx.Interpreter):
         self.graph_outputs = [ir.ExternKernel.realize_input(x) for x in result]
         value: ir.IRNode
         for name, value in self.graph_inputs.items():
-            assert isinstance(value, (TensorBox, sympy.Expr))
+            assert isinstance(value, (TensorBox, sympy.Expr, sympy.logic.boolalg.Boolean))
             if not isinstance(value, TensorBox):
                 continue
             value.realize()
@@ -868,7 +871,7 @@ class GraphLowering(torch.fx.Interpreter):
             if isinstance(value, TensorBox):
                 dtype = value.get_dtype()
             elif isinstance(
-                value, (sympy.Symbol, sympy.Expr, sympy.core.numbers.Integer)
+                value, (sympy.Symbol, sympy.Expr, sympy.core.numbers.Integer, sympy.logic.boolalg.Boolean)
             ):
                 dtype = may_get_constant_buffer_dtype(value)
 

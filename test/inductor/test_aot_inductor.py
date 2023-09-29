@@ -62,6 +62,7 @@ class AOTInductorModelRunner:
             options=options,
             constraints=constraints,
         )
+        print(f"{so_path[:-3]}.cpp")
 
         launcher = aot_inductor_launcher
         is_cpu = any(x.device.type == "cpu" for x in example_inputs)
@@ -585,6 +586,15 @@ class AOTInductorTestsTemplate:
             torch.randn(1, 48, 64, 64, dtype=torch.bfloat16, device="cuda"),
         )
         self.check_model(Repro(), example_inputs)
+
+    def test_bool_inp(self):
+        def f(x, int_inp, bool_inp):
+            if bool_inp:
+                return x + int_inp
+            else:
+                return x * int_inp
+
+        self.check_model(f, (torch.ones(3, 3), 2, True))
 
 
 class AOTInductorTestABICompatible(TestCase):

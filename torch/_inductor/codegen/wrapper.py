@@ -381,7 +381,7 @@ class WrapperCodeGen(CodeGen):
 
     def codegen_input_size_asserts(self):
         for name, buf in V.graph.graph_inputs.items():
-            if isinstance(buf, sympy.Expr):
+            if isinstance(buf, (sympy.Expr, sympy.logic.boolalg.Boolean)):
                 continue
 
             # comparing strides for 0 size tensor is tricky. Ignore them for now.
@@ -582,7 +582,7 @@ class WrapperCodeGen(CodeGen):
         needed = V.graph.sizevars.free_symbols()
 
         def is_expr(x):
-            return isinstance(x[1], sympy.Expr)
+            return isinstance(x[1], (sympy.Expr, sympy.logic.boolalg.Boolean))
 
         graph_inputs_expr = list(filter(is_expr, graph_inputs.items()))
         graph_inputs_tensors = list(
@@ -692,6 +692,8 @@ class WrapperCodeGen(CodeGen):
             for name, value in V.graph.graph_inputs.items():
                 if isinstance(value, sympy.Expr):  # Don't need to add symbolic
                     add_expr_input(name, V.graph.sizevars.size_hint(value))
+                elif isinstance(value, sympy.logic.boolalg.Boolean):
+                    add_expr_input(name, bool(value))
                 else:
                     shape = [V.graph.sizevars.size_hint(x) for x in value.get_size()]
                     stride = [V.graph.sizevars.size_hint(x) for x in value.get_stride()]
@@ -1152,8 +1154,11 @@ class CppWrapperCodeGen(WrapperCodeGen):
 
             if inputs_len != 0:
                 for idx, input_key in enumerate(V.graph.graph_inputs.keys()):
-                    # unwrap input tensor back to scalar
-                    if isinstance(V.graph.graph_inputs[input_key], sympy.Expr):
+                    if isinstance(V.graph.graph_inputs[input_key], (sympy.Expr, sympy.logic.boolalg.Boolean)):
+                        # TODO: this might be incorrect. more correct to say "if num_users ==0"
+                        continue
+                    elif isinstance(V.graph.graph_inputs[input_key], sympy.Expr):
+                        # unwrap input tensor back to scalar
                         from ..graph import may_get_constant_buffer_dtype
                         from .cpp import DTYPE_TO_CPP
 
@@ -1295,9 +1300,8 @@ class CppWrapperCodeGen(WrapperCodeGen):
         with self.prefix.indent():
             codegen_dynamic_dims()
             for idx, (name, inp) in enumerate(V.graph.graph_inputs.items()):
-                assert not isinstance(
-                    inp, sympy.Expr
-                ), f"input {name=} cannot be symbolic"
+                if isinstance(inp, (sympy.Expr, sympy.logic.boolalg.Boolean)):
+                    continue
                 sizes = inp.get_size()
                 dtype = V.graph.graph_inputs[name].get_dtype()
                 self.write_input_output_info("inputs_info_", idx, name, dtype, sizes)
