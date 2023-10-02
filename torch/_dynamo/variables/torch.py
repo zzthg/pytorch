@@ -24,12 +24,7 @@ from ..exc import unimplemented
 from ..utils import (
     check_constant_args,
     check_unspec_python_args,
-<<<<<<< HEAD
     is_rng_state_getter_or_setter,
-=======
-    get_real_value,
-    HAS_NUMPY,
->>>>>>> 3130a81eb9f (wip)
     istype,
     product,
     proxy_args_kwargs,
