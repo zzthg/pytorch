@@ -244,18 +244,10 @@ def _share_state_and_init_handle_attrs(
             "set yet or should have been set to `False`",
         )
         fsdp_state._is_root = False
-<<<<<<< HEAD
-        fsdp_state._unshard_stream = root_state._unshard_stream
-        fsdp_state._post_backward_stream = root_state._post_backward_stream
-        fsdp_state._pre_unshard_stream = root_state._pre_unshard_stream
-        fsdp_state._all_reduce_stream = root_state._all_reduce_stream
-        fsdp_state._default_stream = root_state._default_stream
-=======
         # fsdp_state._unshard_stream = root_state._unshard_stream
         # fsdp_state._post_backward_stream = root_state._post_backward_stream
         # fsdp_state._pre_unshard_stream = root_state._pre_unshard_stream
         # fsdp_state._default_stream = root_state._default_stream
->>>>>>> 70e0f8c7931 (wip)
         fsdp_state._exec_order_data = root_state._exec_order_data
         fsdp_state._free_event_queue = root_state._free_event_queue
         handle = fsdp_state._handle
@@ -283,30 +275,6 @@ def _init_streams(
     """
     assert state._is_root
     assert state._device_handle.is_available()
-<<<<<<< HEAD
-    uses_hybrid_sharding = any(
-        fsdp_state.sharding_strategy in HYBRID_SHARDING_STRATEGIES
-        for fsdp_state in state._all_fsdp_states
-    )
-    # Prioritize all-gathers/reduce-scatters over async all-reduce for HSDP and
-    # preserve the default priority of 0 otherwise
-    high_priority = -1 if state.limit_all_gathers and uses_hybrid_sharding else 0
-    # Default stream for computation
-    state._default_stream = state._device_handle.current_stream()
-    # Stream for unshard logic, including allocating the all-gather destination
-    # tensors and the all-gathers themselves
-    state._unshard_stream = state._device_handle.Stream(priority=high_priority)
-    # Stream for overlapping gradient reduction with the backward pass gradient
-    # computation
-    state._post_backward_stream = state._device_handle.Stream(priority=high_priority)
-    # Stream for pre-unshard logic, namely allocations and writes for CPU
-    # offloading (H2D copy) and mixed precision (low precision cast)
-    state._pre_unshard_stream = state._device_handle.Stream(priority=high_priority)
-    # Stream to run HSDP's all-reduce as async (if using HSDP)
-    state._all_reduce_stream = (
-        state._device_handle.Stream() if uses_hybrid_sharding else state._default_stream
-    )
-=======
     # Stream for unshard logic, including allocating the all-gather destination
     # tensors and the all-gathers themselves.
     # state._unshard_stream = state._device_handle.Stream()
@@ -318,7 +286,6 @@ def _init_streams(
     # state._pre_unshard_stream = state._device_handle.Stream()
     # Default stream for computation
     # state._default_stream = state._device_handle.current_stream()
->>>>>>> 70e0f8c7931 (wip)
 
 
 @no_type_check
@@ -1128,17 +1095,6 @@ def _post_backward_final_callback(
     )
     root_state = state
 
-<<<<<<< HEAD
-    if root_state._sync_gradients:
-        current_stream = state._device_handle.current_stream()
-        # TODO (rohan-varma): this also waits for the overlapped optimizer step to finish
-        # since it currently runs in the post-backward stream. That can be
-        # pushed to the next forward if run in a different stream
-        current_stream.wait_stream(root_state._post_backward_stream)
-        if root_state._all_reduce_stream is not current_stream:  # uses HSDP
-            current_stream.wait_stream(root_state._all_reduce_stream)
-        if root_state.cpu_offload.offload_params:
-=======
     # if root_state._sync_gradients:
         # TODO (rohan-varma): this also waits for the overlapped optimizer step to finish
         # since it currently runs in the post-backward stream. That can be
@@ -1147,7 +1103,6 @@ def _post_backward_final_callback(
         #     root_state._post_backward_stream
         # )
         # if root_state.cpu_offload.offload_params:
->>>>>>> 70e0f8c7931 (wip)
             # Wait for non-blocking GPU -> CPU sharded gradient copies from the
             # post-backward hooks to finish explicitly since CPU gradients do
             # not automatically synchronize with the GPU
