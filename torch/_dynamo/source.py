@@ -144,6 +144,10 @@ class GlobalWeakRefSource(Source):
 @dataclasses.dataclass(frozen=True)
 class AttrSource(ChainedSource):
     member: str
+    # We cache .guard_source() and .name() because those are heavily accessed
+    # and also do not change because this class is frozen.
+    _cached_guard_source = None
+    _cached_name = None
 
     def __post_init__(self):
         assert self.base, "Can't construct an AttrSource without a valid base source"
@@ -153,17 +157,22 @@ class AttrSource(ChainedSource):
                 self, "base", AttrSource(self.base, ".".join(member_parts[:-1]))
             )
             object.__setattr__(self, "member", member_parts[-1])
+        _cached_guard_source = _GUARD_SOURCE_NN_MODULE[self.base.guard_source()]
+        if not self.member.isidentifier():
+            _cached_name = f"getattr({self.base.name()}, {self.member!r})"
+        else:
+            _cached_name = f"{self.base.name()}.{self.member}"
+        object.__setattr__(self, "_cached_guard_source", _cached_guard_source)
+        object.__setattr__(self, "_cached_name", _cached_name)
 
     def reconstruct(self, codegen):
         return self.base.reconstruct(codegen) + codegen.create_load_attrs(self.member)
 
     def guard_source(self):
-        return self.base.guard_source()
+        return self._cached_guard_source
 
     def name(self):
-        if not self.member.isidentifier():
-            return f"getattr({self.base.name()}, {self.member!r})"
-        return f"{self.base.name()}.{self.member}"
+        return self._cached_name
 
 
 @dataclasses.dataclass(frozen=True)
@@ -425,14 +434,25 @@ class ODictGetItemSource(ChainedSource):
 
 @dataclasses.dataclass(frozen=True)
 class NNModuleSource(ChainedSource):
+    # We cache .guard_source() and .name() because those are heavily accessed
+    # and also do not change because this class is frozen.
+    _cached_guard_source = None
+    _cached_name = None
+
+    def __post_init__(self):
+        _cached_guard_source = _GUARD_SOURCE_NN_MODULE[self.base.guard_source()]
+        _cached_name = self.base.name()
+        object.__setattr__(self, "_cached_guard_source", _cached_guard_source)
+        object.__setattr__(self, "_cached_name", _cached_name)
+
     def reconstruct(self, codegen):
         return self.base.reconstruct(codegen)
 
     def guard_source(self):
-        return _GUARD_SOURCE_NN_MODULE[self.base.guard_source()]
+        return self._cached_guard_source
 
     def name(self):
-        return self.base.name()
+        return self._cached_name
 
 
 @dataclasses.dataclass(frozen=True)
