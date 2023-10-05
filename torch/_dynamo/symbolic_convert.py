@@ -1920,7 +1920,6 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
 
         return name
 
-
     @property
     def fake_mode(self):
         return self._fake_mode
