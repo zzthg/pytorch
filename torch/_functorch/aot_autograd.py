@@ -10,13 +10,11 @@ from enum import Enum
 from functools import partial, wraps
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, NewType
 from unittest.mock import patch
-<<<<<<< HEAD
+
 from torch.utils._python_dispatch import is_traceable_wrapper_subclass
 import os
 import types
 import functools
-=======
->>>>>>> e1643e841ca (Fuck it)
 
 from functorch import make_fx
 
@@ -808,8 +806,14 @@ def run_functionalized_fw_and_collect_metadata(
             if not isinstance(arg, Tensor):
                 new_arg = arg
             else:
+<<<<<<< HEAD
                 new_arg = from_fun(f_arg)
             if arg is not new_arg:
+=======
+                torch._sync(f_arg)
+                new_arg = torch._from_functional_tensor(f_arg)
+            if arg is not new_arg and False:
+>>>>>>> 8d323ff4d28 (Turn off mutation in aot autograd)
                 if StorageWeakRef(arg.untyped_storage()) == StorageWeakRef(new_arg.untyped_storage()):
                     mutates_data = False
                     mutates_metadata = True
