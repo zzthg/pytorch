@@ -47,6 +47,12 @@
 
 #include <torch/custom_class.h>
 
+namespace c10 {
+
+void SetGlobalRank(int64_t);
+
+}
+
 namespace {
 
 // Wrapper to ensure GIL is released before destructing ProcessGroupGloo
@@ -2620,6 +2626,22 @@ Example::
   module.attr("_DEFAULT_FIRST_BUCKET_BYTES") = ::c10d::kDefaultFirstBucketBytes;
   module.attr("_DEFAULT_PG_TIMEOUT") = py::cast(kProcessGroupDefaultTimeout);
   module.attr("_DEFAULT_NO_TIMEOUT") = py::cast(kNoTimeout);
+
+  module.def(
+      "_set_global_rank",
+      [](int64_t rank) {
+        c10::SetGlobalRank(rank);
+      },
+      py::arg("rank"),
+      R"(
+        Arguments:
+          rank(int): The rank of the default process group
+        Informs the C++ runtime what the default process group (a strictly Python
+        notion) is.  This mostly ensures that C++ log messages are prefixed with
+        rank information.  This is not meant to be called manually; it is
+        called by _update_default_pg.
+      ")
+  );
 
   module.def(
       "_create_work_from_future",
