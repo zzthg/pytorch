@@ -703,6 +703,7 @@ def gen_alias_from_base(aliased_base_tensor, target_meta_tensor, target_requires
 
 def to_fun(t):
     if isinstance(t, Tensor):
+        log.warning("to_fun %s %s %s", t.requires_grad, safe_is_leaf(t), t.grad_fn)
         return FunctionalTensor.to_functional(t)
     else:
         return t
@@ -806,14 +807,8 @@ def run_functionalized_fw_and_collect_metadata(
             if not isinstance(arg, Tensor):
                 new_arg = arg
             else:
-<<<<<<< HEAD
                 new_arg = from_fun(f_arg)
-            if arg is not new_arg:
-=======
-                torch._sync(f_arg)
-                new_arg = torch._from_functional_tensor(f_arg)
             if arg is not new_arg and False:
->>>>>>> 8d323ff4d28 (Turn off mutation in aot autograd)
                 if StorageWeakRef(arg.untyped_storage()) == StorageWeakRef(new_arg.untyped_storage()):
                     mutates_data = False
                     mutates_metadata = True
@@ -1351,9 +1346,6 @@ def create_joint(
         backward_out = []
         # Call the backwards pass
         if grad_primals:
-            from torchviz import make_dot
-            for out in needed_outs:
-                log.warning("DOT GRAPH\n%s", make_dot(out))
             with fx_traceback.preserve_node_meta():
                 # for full graph export, we always export a joint graph where we assume no tangents are needed.
                 if aot_config.no_tangents:

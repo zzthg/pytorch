@@ -321,6 +321,7 @@ PyObject* THPEngine_run_backward(
         // nodes in the graph (e.g., mul when an operand is scalar) that have
         // edges pointing to nullptr don't get erroneously assigned `needed =
         // True` in exec_info.
+        LOG(WARNING) << "unreachable input, creating Identity edge";
         output_edges.emplace_back(std::make_shared<Identity>(), 0);
       } else {
         output_edges.emplace_back(grad_fn, output_nr);
