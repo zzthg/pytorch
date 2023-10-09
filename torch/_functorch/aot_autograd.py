@@ -12,9 +12,6 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, NewTy
 from unittest.mock import patch
 
 from torch.utils._python_dispatch import is_traceable_wrapper_subclass
-import os
-import types
-import functools
 
 from functorch import make_fx
 
@@ -1349,6 +1346,7 @@ def create_joint(
             with fx_traceback.preserve_node_meta():
                 # for full graph export, we always export a joint graph where we assume no tangents are needed.
                 if aot_config.no_tangents:
+                    assert False
                     assert len(needed_tangents) == 1 and needed_tangents[0].numel() == 1
                     backward_out = torch.autograd.grad(
                         needed_outs,
@@ -1594,7 +1592,7 @@ def aot_dispatch_base_graph(flat_fn, flat_args: List[Tensor], aot_config: AOTCon
     # there should be *NO* mutating ops in the graph at this point.
     copy_count = assert_functional_graph(fw_module.graph, allow_input_mutations=aot_config.keep_inference_input_mutations)
 
-    fw_module.graph.eliminate_dead_code()
+    # fw_module.graph.eliminate_dead_code()
     fw_module.recompile()
 
     copy_count2 = assert_functional_graph(fw_module.graph, allow_input_mutations=aot_config.keep_inference_input_mutations)
@@ -2854,7 +2852,7 @@ def aot_dispatch_autograd_graph(flat_fn, flat_args: List[Any], aot_config: AOTCo
     # a fake tensor. Unlikely.
     # See Note: [Fake Modules and AOTAutograd]
     torch._dynamo.utils.assert_no_fake_params_or_buffers(fx_g)
-    fx_g.graph.eliminate_dead_code()
+    # fx_g.graph.eliminate_dead_code()
     fx_g.recompile()
     # TODO: in AOTAutograd, we create metadata like _indices_of_inps_to_detach to detect
     # when we need to manually detach() some inputs in the forward.
