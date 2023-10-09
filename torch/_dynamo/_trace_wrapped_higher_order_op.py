@@ -1,5 +1,3 @@
-import logging
-
 from torch._C import DispatchKey
 from torch._higher_order_ops.utils import autograd_not_implemented
 
@@ -8,6 +6,8 @@ from torch._subclasses import FakeTensorMode
 
 from torch.fx.experimental.proxy_tensor import ProxyTorchDispatchMode, track_tensor_tree
 from torch.utils._python_dispatch import _get_current_dispatch_mode
+
+import logging
 
 log = logging.getLogger(__name__)
 
@@ -120,15 +120,14 @@ _trace_wrapped_op.py_impl(DispatchKey.Autograd)(
 @_trace_wrapped_op.py_functionalize_impl
 def _trace_wrapped_functionalized(ctx, *args, fn):
     unwrapped_args = ctx.unwrap_tensors(args)
-    wrapped_fn = ctx.functionalize(fn)
     with ctx.redispatch_to_next():
-        return ctx.wrap_tensors(_trace_wrapped_op(*unwrapped_args, fn=wrapped_fn))
+        return ctx.wrap_tensors(_trace_wrapped_op(*unwrapped_args, fn=fn))
 
 
-# TODO(voz): Make this automatic for keys, this is very ugly atm
-_trace_wrapped_op.fallthrough(DispatchKey.PythonDispatcher)  # type: ignore[attr-defined]
-_trace_wrapped_op.fallthrough(DispatchKey.PythonTLSSnapshot)  # type: ignore[attr-defined]
-_trace_wrapped_op.fallthrough(DispatchKey.ADInplaceOrView)
-_trace_wrapped_op.fallthrough(DispatchKey.BackendSelect)
-_trace_wrapped_op.fallthrough(DispatchKey.AutocastCPU)  # type: ignore[attr-defined]
-_trace_wrapped_op.fallthrough(DispatchKey.AutocastCUDA)  # type: ignore[attr-defined]
+# # TODO(voz): Make this automatic for keys, this is very ugly atm
+# _trace_wrapped_op.fallthrough(DispatchKey.PythonDispatcher)  # type: ignore[attr-defined]
+# _trace_wrapped_op.fallthrough(DispatchKey.PythonTLSSnapshot)  # type: ignore[attr-defined]
+# _trace_wrapped_op.fallthrough(DispatchKey.ADInplaceOrView)
+# _trace_wrapped_op.fallthrough(DispatchKey.BackendSelect)
+# _trace_wrapped_op.fallthrough(DispatchKey.AutocastCPU)  # type: ignore[attr-defined]
+# _trace_wrapped_op.fallthrough(DispatchKey.AutocastCUDA)  # type: ignore[attr-defined]
