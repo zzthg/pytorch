@@ -1,6 +1,16 @@
 import copy
 import dataclasses
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import sympy
 
@@ -21,6 +31,7 @@ __all__ = [
     "ExportBackwardSignature",
     "ExportedProgram",
     "ExportGraphSignature",
+    "InputDim",
     "ModuleCallEntry",
     "ModuleCallSignature",
 ]
@@ -34,6 +45,11 @@ class ExportBackwardSignature:
     gradients_to_parameters: Dict[str, str]
     gradients_to_user_inputs: Dict[str, str]
     loss_output: str
+
+
+class InputDim(NamedTuple):
+    input_name: str
+    dim: int
 
 
 @dataclasses.dataclass
@@ -237,9 +253,6 @@ class ExportedProgram:
             _create_graph_module_for_export,
             CallSpec,
         )
-        from torch._export.passes.add_runtime_assertions_for_constraints_pass import (
-            InputDim,
-        )
 
         # Remove codegen related things from the graph. It should just be a flat graph.
         graph._codegen = torch.fx.graph.CodeGen()
@@ -437,7 +450,6 @@ class ExportedProgram:
         from torch._decomp import core_aten_decompositions
         from torch._export.passes.add_runtime_assertions_for_constraints_pass import (
             _AddRuntimeAssertionsForInlineConstraintsPass,
-            InputDim,
         )
         from torch._export.passes.lift_constant_tensor_pass import (
             lift_constant_tensor_pass,

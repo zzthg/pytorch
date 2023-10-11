@@ -50,6 +50,7 @@ from .exported_program import (
     ExportBackwardSignature,
     ExportedProgram,
     ExportGraphSignature,
+    InputDim,
     ModuleCallEntry,
     ModuleCallSignature,
 )
