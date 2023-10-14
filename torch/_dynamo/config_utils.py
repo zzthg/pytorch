@@ -122,7 +122,7 @@ class ConfigModule(ModuleType):
             f"use {__name__}.install_config_module(sys.modules[__name__])"
         )
 
-    def __hasattr__(self, name, value):
+    def __hasattr__(self, name):
         return name in self._config or name in self._compile_ignored
 
     def __setattr__(self, name, value):
@@ -195,6 +195,14 @@ class ConfigModule(ModuleType):
     def shallow_copy_dict(self):
         return {**self._config, **self._compile_ignored}
 
+    def load_dict(self, d):
+        assert set(d.keys()) == self._allowed_keys
+        for k, v in d.items():
+            if k in self._compile_ignored_keys:
+                self._compile_ignored[k] = v
+            else:
+                self._config[k] = v
+
     def get_config_copy(self):
         return {**copy.deepcopy(self._config), **copy.deepcopy(self._compile_ignored)}
 
@@ -235,13 +243,14 @@ class ConfigModule(ModuleType):
         class ConfigPatch(ContextDecorator):
             def __enter__(self):
                 assert not prior
-                for key in changes.keys():
+                for key, val in changes.items():
                     # KeyError on invalid entry
                     if key in config._compile_ignored_keys:
                         prior_ignored[key] = config._compile_ignored[key]
+                        config._compile_ignored[key] = val
                     else:
                         prior[key] = config._config[key]
-                config._config.update(changes)
+                        config._config[key] = val
 
             def __exit__(self, exc_type, exc_val, exc_tb):
                 config._config.update(prior)
