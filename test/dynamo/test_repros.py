@@ -814,8 +814,9 @@ class MockModule(torch.nn.Module):
 class ReproTests(torch._dynamo.test_case.TestCase):
     def test_do_paste_mask(self):
         torch._dynamo.utils.counters.clear()
+        cnt = torch._dynamo.testing.CompileCounter()
         opt__do_paste_mask = torch._dynamo.optimize(
-            torch._dynamo.testing.CompileCounter()
+            cnt,
         )(_do_paste_mask)
         opt__do_paste_mask(
             torch.randn(1, 1, 28, 28),

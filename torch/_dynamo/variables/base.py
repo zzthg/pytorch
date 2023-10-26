@@ -347,6 +347,9 @@ class VariableTracker(metaclass=VariableTrackerMeta):
         """Used by LazyVariableTracker to indicate an unrealized node"""
         return True
 
+    def is_mutable_local(self, cls):
+        return isinstance(self.mutable_local, cls)
+
     def __init__(
         self,
         *,

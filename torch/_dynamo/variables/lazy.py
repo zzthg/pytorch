@@ -1,14 +1,13 @@
 import functools
 from typing import Optional
 
-from .base import MutableLocalBase, MutableLocalSource, VariableTracker
+from .base import VariableTracker
 
 
-class LazyMutableLocal(MutableLocalBase):
+class RealizedVariableTrackerContainer:
     """Container to cache the real VariableTracker"""
 
     def __init__(self):
-        super().__init__(MutableLocalSource.Local)
         self.vt: Optional[VariableTracker] = None
 
 
@@ -26,37 +25,47 @@ class LazyVariableTracker(VariableTracker):
     VariableTrackers right away.
     """
 
-    _nonvar_fields = {"_value", *VariableTracker._nonvar_fields}
+    _nonvar_fields = {"rvtc", "_value", *VariableTracker._nonvar_fields}
 
-    def __init__(self, _value, source, **kwargs):
+    def __init__(self, _value, source, rvtc=None, **kwargs):
         super().__init__(source=source, **kwargs)
         self._value = _value
-        if self.mutable_local is None:
-            self.mutable_local = LazyMutableLocal()
+        self.rvtc = rvtc if rvtc else RealizedVariableTrackerContainer()
         assert (
             self.source
         ), "Illegal construction. LazyVariableTracker deferred creation utilizes VariableBuilder."
 
+    @property
+    def mutable_local(self):
+        return self.realize().mutable_local
+
+    @mutable_local.setter
+    def mutable_local(self, value):
+        assert value is None
+
+    def is_mutable_local(self, cls):
+        return False
+
     def realize(self) -> VariableTracker:
         """Force construction of the real VariableTracker"""
-        if self.mutable_local.vt is None:
+        if self.rvtc.vt is None:
             from ..symbolic_convert import InstructionTranslator
             from .builder import VariableBuilder
 
             tx = InstructionTranslator.current_tx()
-            self.mutable_local.vt = VariableBuilder(tx, self.source)(self._value)
-            self.mutable_local.vt.parents_tracker.add(self.parents_tracker)
+            self.rvtc.vt = VariableBuilder(tx, self.source)(self._value)
+            self.rvtc.vt.parents_tracker.add(self.parents_tracker)
             self._value = None
-        return self.mutable_local.vt
+        return self.rvtc.vt
 
     def unwrap(self):
         """Return the real VariableTracker if it already exists"""
         if self.is_realized():
-            return self.mutable_local.vt
+            return self.rvtc.vt
         return self
 
     def is_realized(self):
-        return self.mutable_local.vt is not None
+        return self.rvtc.vt is not None
 
     def clone(self, **kwargs):
         if (
