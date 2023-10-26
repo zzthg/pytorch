@@ -11,6 +11,7 @@ import linecache
 import logging
 import operator
 import sys
+import threading
 import traceback
 import types
 import typing
@@ -123,6 +124,7 @@ log = logging.getLogger(__name__)
 graph_break_log = torch._logging.getArtifactLogger(__name__, "graph_breaks")
 trace_call_log = torch._logging.getArtifactLogger(__name__, "trace_call")
 trace_source_log = torch._logging.getArtifactLogger(__name__, "trace_source")
+tls = threading.local()
 
 
 @functools.lru_cache(None)
@@ -2000,6 +2002,17 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
 class InstructionTranslator(InstructionTranslatorBase):
     mutated_closure_cell_contents: Set[str]
 
+    @staticmethod
+    def current_tx() -> "InstructionTranslator":
+        return tls.current_tx
+
+    @contextlib.contextmanager
+    def set_current_tx(self):
+        prior = getattr(tls, "current_tx", None)
+        tls.current_tx = self
+        yield
+        tls.current_tx = prior
+
     def __init__(
         self,
         instructions: List[Instruction],
@@ -2046,7 +2059,7 @@ class InstructionTranslator(InstructionTranslatorBase):
 
         # as soon as we create the tracing context we should keep it active, so any calls
         # into dynamo apis can rely on finding it
-        with tracing(self.output.tracing_context):
+        with tracing(self.output.tracing_context), self.set_current_tx():
             self.one_graph: bool = one_graph
             self.export = export
             self.mutated_closure_cell_contents = mutated_closure_cell_contents
@@ -2071,6 +2084,12 @@ class InstructionTranslator(InstructionTranslatorBase):
                 for k in vars
                 if k in f_locals
             )
+            if export:
+                # export gets super confused if we never realize unused inputs
+                # in export mode just eagerly realize everything
+                self.symbolic_locals = VariableTracker.apply(
+                    lambda x: x.realize(), self.symbolic_locals
+                )
 
             self.init_local_index_guards_hack()
 
