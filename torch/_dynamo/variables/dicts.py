@@ -77,7 +77,6 @@ class ConstDictVariable(VariableTracker):
     ) -> "VariableTracker":
         from . import ConstantVariable, SetVariable, TupleVariable
 
-        options = VariableTracker.propagate(self, args, kwargs.values())
         val = self.items
 
         if name == "__getitem__":
@@ -92,15 +91,12 @@ class ConstDictVariable(VariableTracker):
                             ConstDictVariable._key_to_var(
                                 tx,
                                 k,
-                                **options,
                             ),
                             v,
                         ],
-                        **options,
                     )
                     for k, v in val.items()
                 ],
-                **options,
             )
         elif name == "keys":
             assert not (args or kwargs)
@@ -109,20 +105,18 @@ class ConstDictVariable(VariableTracker):
                     ConstDictVariable._key_to_var(
                         tx,
                         k,
-                        **options,
                     )
                     for k in val.keys()
                 ],
                 mutable_local=MutableLocal(),
-                **options,
             )
 
         elif name == "values":
             assert not (args or kwargs)
-            return TupleVariable(list(val.values()), **options)
+            return TupleVariable(list(val.values()))
         elif name == "__len__":
             assert not (args or kwargs)
-            return ConstantVariable.create(len(self.items), **options)
+            return ConstantVariable.create(len(self.items))
         elif (
             name == "__setitem__"
             and args
@@ -139,7 +133,7 @@ class ConstDictVariable(VariableTracker):
 
             return tx.replace_all(
                 self,
-                self.modifed(newval, **options),
+                self.modifed(newval),
             )
         elif (
             name in ("pop", "get")
@@ -158,7 +152,7 @@ class ConstDictVariable(VariableTracker):
         ):
             newval = collections.OrderedDict(val)
             result = newval.pop(ConstDictVariable.get_key(args[0]))
-            tx.replace_all(self, self.modifed(newval, **options))
+            tx.replace_all(self, self.modifed(newval))
             return result
         elif (
             name == "update"
@@ -168,7 +162,7 @@ class ConstDictVariable(VariableTracker):
         ):
             newval = collections.OrderedDict(val)
             newval.update(args[0].items)
-            result = self.modifed(newval, **options)
+            result = self.modifed(newval)
             return tx.replace_all(self, result)
         elif (
             name in ("get", "__getattr__")
@@ -181,7 +175,7 @@ class ConstDictVariable(VariableTracker):
             name == "__contains__" and args and ConstDictVariable.is_valid_key(args[0])
         ):
             return ConstantVariable.create(
-                ConstDictVariable.get_key(args[0]) in self.items, **options
+                ConstDictVariable.get_key(args[0]) in self.items
             )
         else:
             return super().call_method(tx, name, args, kwargs)
@@ -191,9 +185,8 @@ class ConstDictVariable(VariableTracker):
         return self.clone(items=items, **options)
 
     def unpack_var_sequence(self, tx):
-        options = VariableTracker.propagate([self])
         val = self.items
-        result = [ConstDictVariable._key_to_var(tx, k, **options) for k in val.keys()]
+        result = [ConstDictVariable._key_to_var(tx, k) for k in val.keys()]
         return result
 
     @classmethod
@@ -251,8 +244,6 @@ class DefaultDictVariable(ConstDictVariable):
         args: "List[VariableTracker]",
         kwargs: "Dict[str, VariableTracker]",
     ) -> "VariableTracker":
-        options = VariableTracker.propagate(self, args, kwargs.values())
-
         if name == "__getitem__":
             k = ConstDictVariable.get_key(args[0])
 
@@ -267,7 +258,7 @@ class DefaultDictVariable(ConstDictVariable):
                     new_val = collections.OrderedDict(self.items)
                     default_var = self.default_factory.call_function(tx, [], {})
                     new_val[k] = default_var
-                    tx.replace_all(self, self.modifed(new_val, **options))
+                    tx.replace_all(self, self.modifed(new_val))
                     return default_var
         else:
             return super().call_method(tx, name, args, kwargs)
@@ -352,9 +343,7 @@ class DataClassVariable(ConstDictVariable):
                     items[key] = var
                 else:
                     excluded.append(var)
-        return cls(
-            items, user_cls, **VariableTracker.propagate(excluded, items.values())
-        )
+        return cls(items, user_cls)
 
     def __init__(self, items, user_cls, **options):
         super().__init__(items, user_cls, **options)
@@ -377,7 +366,6 @@ class DataClassVariable(ConstDictVariable):
         args: "List[VariableTracker]",
         kwargs: "Dict[str, VariableTracker]",
     ) -> "VariableTracker":
-        options = VariableTracker.propagate(self, args, kwargs.values())
         if name == "__getitem__":
             assert not kwargs and len(args) == 1
             index = args[0].as_python_constant()
@@ -389,7 +377,7 @@ class DataClassVariable(ConstDictVariable):
                 )
         elif name == "to_tuple":
             assert not (args or kwargs)
-            return variables.TupleVariable(list(self.items.values()), **options)
+            return variables.TupleVariable(list(self.items.values()))
         elif name == "__setattr__":
             name = "__setitem__"
         return super().call_method(tx, name, args, kwargs)
@@ -501,7 +489,6 @@ class CustomizedDictVariable(ConstDictVariable):
         args: "List[VariableTracker]",
         kwargs: "Dict[str, VariableTracker]",
     ) -> "VariableTracker":
-        options = VariableTracker.propagate(self, args, kwargs.values())
         fn = getattr(self.user_cls, name)
         source = None if self.source is None else AttrSource(self.source, name)
 
@@ -514,7 +501,7 @@ class CustomizedDictVariable(ConstDictVariable):
         elif name in ("__getitem__", "to_tuple", "__setitem__", "__setattr__"):
             # for user overridden method
             return tx.inline_user_function_return(
-                variables.UserFunctionVariable(fn, source=source, **options),
+                variables.UserFunctionVariable(fn, source=source),
                 [self] + list(args),
                 kwargs,
             )
@@ -593,8 +580,7 @@ class PythonSysModulesVariable(VariableTracker):
             return self.call_contains(tx, *args, **kwargs)
 
         # Fallback to dict implementation
-        options = VariableTracker.propagate(self, args, kwargs.values())
-        real_dict = VariableBuilder(tx, self.source, **options)(sys.modules)
+        real_dict = VariableBuilder(tx, self.source)(sys.modules)
         return real_dict.call_method(tx, name, args, kwargs)
 
     def _contains_helper(self, tx, key: VariableTracker):
