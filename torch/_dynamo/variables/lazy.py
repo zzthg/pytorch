@@ -47,7 +47,7 @@ class LazyVariableTracker(VariableTracker):
             self.mutable_local.vt = VariableBuilder(tx, self.source)(self._value)
             self.mutable_local.vt.parents_tracker.add(self.parents_tracker)
             self._value = None
-        return self.mutable_local.vt.add_options(self)
+        return self.mutable_local.vt
 
     def unwrap(self):
         """Return the real VariableTracker if it already exists"""
@@ -73,7 +73,6 @@ class LazyVariableTracker(VariableTracker):
         return getattr(self.realize(), item)
 
     # most methods are auto-generated below, these are the ones we want to exclude
-    add_options = VariableTracker.add_options
     apply = VariableTracker.apply
     copy = VariableTracker.copy
     __post_init__ = VariableTracker.__post_init__
