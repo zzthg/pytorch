@@ -9,6 +9,8 @@
 
 namespace torch {
 
+extern TORCH_API const std::string kParamCommsCallName;
+
 class TORCH_API ParamCommsDebugInfo : public c10::DebugInfoBase {
  public:
   ParamCommsDebugInfo() = default;
@@ -97,7 +99,7 @@ class TORCH_API ParamCommsDebugInfo : public c10::DebugInfoBase {
       outSplitSizes,                                                           \
       worldSize};                                                              \
   c10::ArrayRef<const c10::IValue> paramInputs(paramList);                     \
-  RECORD_FUNCTION(at::kParamCommsCallName, paramInputs);
+  RECORD_FUNCTION(torch::kParamCommsCallName, paramInputs);
 
 #define RECORD_PARAM_COMMS_DATA(                                               \
     seq,                                                                       \
@@ -133,7 +135,7 @@ class TORCH_API ParamCommsDebugInfo : public c10::DebugInfoBase {
       worldSize};                                                              \
   c10::ArrayRef<const c10::IValue> paramInputs(paramList);                     \
   RECORD_FUNCTION_WITH_INPUTS_OUTPUTS(                                         \
-      at::kParamCommsCallName,                                                 \
+      torch::kParamCommsCallName,                                              \
       paramInputs,                                                             \
       std::vector<c10::IValue>(1, c10::IValue(OutputTensors)));
 } // namespace torch
