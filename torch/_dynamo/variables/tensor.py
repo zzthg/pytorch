@@ -696,7 +696,7 @@ class TensorVariable(VariableTracker):
                 ),
                 **options,
             )
-        elif name == "register_hook":
+        elif name == "register_hook" or name == "register_post_accumulate_grad_hook":
             # see [On tensor.register_hook]
             assert len(args) == 1
             fn_var = args[0]
