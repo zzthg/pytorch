@@ -1441,14 +1441,8 @@ def _register_post_backward_hook(
     if already_registered or not flat_param.requires_grad:
         return
     # Get the `AccumulateGrad` object
-    temp_flat_param = flat_param.expand_as(flat_param)
-    _p_assert(
-        temp_flat_param.grad_fn is not None,
-        "The `grad_fn` is needed to access the `AccumulateGrad` and "
-        "register the post-backward hook",
-    )
     hook = functools.partial(_post_backward_hook, state, handle)
-    hook_handle = temp_flat_param.register_post_accumulate_grad_hook(hook)
+    hook_handle = flat_param.register_post_accumulate_grad_hook(hook)
     flat_param._post_backward_hook_handle = hook_handle  # type: ignore[attr-defined]
 
 

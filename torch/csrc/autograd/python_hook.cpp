@@ -12,6 +12,7 @@
 #include <torch/csrc/utils/python_strings.h>
 
 #include <sstream>
+#include <iostream>
 
 using torch::autograd::Variable;
 using torch::autograd::variable_list;
@@ -196,6 +197,7 @@ void PyFunctionPreHook::compiled_args(CompiledNodeArgs& args) {
 void PyFunctionPostHook::compiled_args(CompiledNodeArgs& args) {
   PyObject *key = nullptr, *value = nullptr;
   Py_ssize_t pos = 0;
+  std::cout << "PyFunctionTensorPostAccGradHooks compiled_args!" <<std::endl;
   while (PyDict_Next(dict, &pos, &key, &value)) {
     Py_INCREF(value);
     args.add_post_hook(c10::SafePyObject(value, getPyInterpreter()));
@@ -205,6 +207,7 @@ void PyFunctionPostHook::compiled_args(CompiledNodeArgs& args) {
 PyFunctionTensorPostAccGradHooks::PyFunctionTensorPostAccGradHooks(
     PyObject* dict)
     : dict(dict) {
+  std::cout << "PyFunctionTensorPostAccGradHooks hook" <<std::endl;
   Py_INCREF(dict);
 }
 
@@ -217,8 +220,20 @@ PyFunctionTensorPostAccGradHooks::~PyFunctionTensorPostAccGradHooks() {
   }
 }
 
+void PyFunctionTensorPostAccGradHooks::compiled_args(CompiledNodeArgs& args) {
+  PyObject *key = nullptr, *value = nullptr;
+  Py_ssize_t pos = 0;
+  std::cout << "POST GRAD ACC HOOK COMPILED_ARG PRE_ITER" <<std::endl;
+  while (PyDict_Next(dict, &pos, &key, &value)) {
+    Py_INCREF(value);
+    std::cout << "POST GRAD ACC HOOK COMPILED_ARG" <<std::endl;
+    args.add_post_hook(c10::SafePyObject(value, getPyInterpreter()));
+  }
+}
+
 auto PyFunctionTensorPostAccGradHooks::operator()(const Variable& tensor)
     -> void {
+  std::cout << "PyFunctionTensorPostAccGradHooks op" <<std::endl;
   pybind11::gil_scoped_acquire gil;
   THPObjectPtr tup(PyTuple_New(1));
   PyTuple_SET_ITEM(tup.get(), 0, THPVariable_Wrap(tensor));

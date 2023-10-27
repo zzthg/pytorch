@@ -347,7 +347,7 @@ class CompiledNodeArgs {
         fn->retains_grad_hooks().empty(),
         "retains_grad_hooks not implemented for compiled autograd");
     TORCH_CHECK(
-        fn->tensor_post_acc_grad_hooks() == nullptr,
+        fn->tensor_post_acc_grad_hooks() != nullptr,
         "tensor_post_acc_grad_hooks not implemented for compiled autograd");
     for (auto& i : fn->tensor_pre_hooks()) {
       i->compiled_args(*this);
@@ -358,6 +358,12 @@ class CompiledNodeArgs {
     for (auto& i : fn->post_hooks()) {
       i->compiled_args(*this);
     }
+    for (auto& i : fn->post_hooks()) {
+      i->compiled_args(*this);
+    }
+    // plural lol
+    fn->tensor_post_acc_grad_hooks()->compiled_args(*this);
+
     collect_size(_node_call.tensor_pre_hooks.size());
     collect_size(_node_call.pre_hooks.size());
     collect_size(_node_call.post_hooks.size());

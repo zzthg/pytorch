@@ -1227,6 +1227,8 @@ int THPVariable_set_post_accumulate_grad_hooks(
   if (obj) {
     torch::autograd::impl::set_post_acc_grad_hooks(
         tensor, std::make_unique<PyFunctionTensorPostAccGradHooks>(obj));
+    auto& fn = *((THPCppFunction*)obj)->cdata;
+    // fn.add_tensor_post_acc_grad_hooks_(std::make_unique<PyFunctionTensorPostAccGradHooks>(obj));
   }
   return 0;
   END_HANDLE_TH_ERRORS_RET(-1)

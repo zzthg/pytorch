@@ -7,10 +7,12 @@
 #include <torch/csrc/autograd/grad_mode.h>
 #include <torch/csrc/autograd/variable.h>
 #include <torch/csrc/dynamo/compiled_autograd.h>
+#include <torch/csrc/PyInterpreter.h>
 
 #include <cstdint>
 #include <stdexcept>
 #include <utility>
+#include <iostream>
 
 namespace torch {
 namespace autograd {
@@ -71,7 +73,10 @@ void AccumulateGrad::compiled_args(CompiledNodeArgs& args) {
     args.collect(variable);
     args.collect(variable.grad());
   }
+  // auto& hook = tensor_post_acc_grad_hooks();
+  // args.add_post_hook(c10::SafePyObject(hook, getPyInterpreter()));
 }
+
 variable_list AccumulateGrad::apply_with_saved(
     const variable_list& grads,
     SwapSavedVariables& saved) {

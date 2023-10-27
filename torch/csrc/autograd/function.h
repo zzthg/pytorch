@@ -495,6 +495,10 @@ struct TORCH_API Node : std::enable_shared_from_this<Node> {
     tensor_pre_hooks_.emplace_back(std::move(pre_hook));
   }
 
+  void add_tensor_post_acc_grad_hooks_(std::unique_ptr<PostAccumulateGradHook>&& hook) {
+    tensor_post_acc_grad_hooks_ = std::move(hook);
+  }
+
   void add_retains_grad_hook(
       std::unique_ptr<FunctionPreHook>&& pre_hook,
       size_t output_idx) {
@@ -523,8 +527,7 @@ struct TORCH_API Node : std::enable_shared_from_this<Node> {
 
   virtual std::unique_ptr<PostAccumulateGradHook>&
   tensor_post_acc_grad_hooks() noexcept {
-    static std::unique_ptr<PostAccumulateGradHook> empty = nullptr;
-    return empty;
+    return tensor_post_acc_grad_hooks_;
   }
 
   std::unordered_map<size_t, std::unique_ptr<FunctionPreHook>>&
@@ -670,6 +673,7 @@ struct TORCH_API Node : std::enable_shared_from_this<Node> {
   std::unordered_map<size_t, std::unique_ptr<FunctionPreHook>>
       retains_grad_hooks_;
   std::vector<std::unique_ptr<FunctionPostHook>> post_hooks_;
+  std::unique_ptr<PostAccumulateGradHook> tensor_post_acc_grad_hooks_;
   at::SmallVector<InputMetadata, 2> input_metadata_;
 };
 
