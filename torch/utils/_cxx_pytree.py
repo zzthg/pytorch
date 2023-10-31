@@ -58,6 +58,7 @@ __all__ = [
 
 T = TypeVar("T")
 S = TypeVar("S")
+U = TypeVar("U")
 R = TypeVar("R")
 
 
@@ -97,18 +98,16 @@ def register_pytree_node(
 
     Args:
         cls (type): A Python type to treat as an internal pytree node.
-        flatten_fn (callable): A function to be used during flattening, taking an instance of ``cls``
-            and returning a triple or optionally a pair, with (1) an iterable for the children to be
-            flattened recursively, and (2) some hashable auxiliary data to be stored in the treespec
-            and to be passed to the ``unflatten_func``, and (3) (optional) an iterable for the tree
-            path entries to the corresponding children. If the entries are not provided or given by
-            :data:`None`, then `range(len(children))` will be used.
-        unflatten_fn (callable): A function taking two arguments: the auxiliary data that was returned
-            by ``flatten_func`` and stored in the treespec, and the unflattened children. The function
-            should return an instance of ``cls``.
+        flatten_func (callable): A function to be used during flattening, taking an instance of
+            ``cls`` and returning a pair, with (1) an iterable for the children to be flattened
+            recursively, and (2) some hashable auxiliary data to be stored in the treespec and to be
+            passed to the ``unflatten_func``.
+        unflatten_func (callable): A function taking two arguments: the auxiliary data that was
+            returned by ``flatten_func`` and stored in the treespec, and the unflattened children.
+            The function should return an instance of ``cls``.
         namespace (str, optional): A non-empty string that uniquely identifies the namespace of the
-            type registry. This is used to isolate the registry from other modules that might register
-            a different custom behavior for the same type. (default: :const:`"torch"`)
+            type registry. This is used to isolate the registry from other modules that might
+            register a different custom behavior for the same type. (default: :const:`"torch"`)
 
     Example::
 
@@ -214,7 +213,7 @@ def tree_flatten(
     *,
     none_is_leaf: bool = True,
     namespace: str = "torch",
-) -> Tuple[List[Any], PyTreeSpec]:
+) -> Tuple[List[Any], TreeSpec]:
     """Flatten a pytree.
 
     See also :func:`tree_unflatten`.
@@ -264,7 +263,7 @@ def tree_flatten(
     )
 
 
-def tree_unflatten(leaves: Iterable[Any], treespec: PyTreeSpec) -> PyTree:
+def tree_unflatten(leaves: Iterable[Any], treespec: TreeSpec) -> PyTree:
     """Reconstruct a pytree from the treespec and the leaves.
 
     The inverse of :func:`tree_flatten`.
@@ -277,7 +276,7 @@ def tree_unflatten(leaves: Iterable[Any], treespec: PyTreeSpec) -> PyTree:
     Args:
         leaves (iterable): The list of leaves to use for reconstruction. The list must match the
             number of leaves of the treespec.
-        treespec (PyTreeSpec): The treespec to reconstruct.
+        treespec (TreeSpec): The treespec to reconstruct.
 
     Returns:
         The reconstructed pytree, containing the ``leaves`` placed in the structure described by
@@ -286,7 +285,7 @@ def tree_unflatten(leaves: Iterable[Any], treespec: PyTreeSpec) -> PyTree:
     if not isinstance(treespec, PyTreeSpec):
         raise TypeError(
             f"tree_unflatten(values, spec): Expected `spec` to be instance of "
-            f"PyTreeSpec but got item of type {type(treespec)}."
+            f"TreeSpec but got item of type {type(treespec)}."
         )
     return optree.tree_unflatten(treespec, leaves)  # type: ignore[arg-type]
 
@@ -332,7 +331,7 @@ def tree_structure(
     *,
     none_is_leaf: bool = True,
     namespace: str = "torch",
-) -> PyTreeSpec:
+) -> TreeSpec:
     """Get the treespec for a pytree.
 
     See also :func:`tree_flatten`.
@@ -459,9 +458,11 @@ def tree_map_(
 
 
 Type2 = Tuple[Type[T], Type[S]]
+Type3 = Tuple[Type[T], Type[S], Type[U]]
 TypeAny = Union[Type[Any], Tuple[Type[Any], ...]]
 
 Fn2 = Callable[[Union[T, S]], R]
+Fn3 = Callable[[Union[T, S, U]], R]
 Fn = Callable[[T], R]
 FnAny = Callable[[Any], R]
 
@@ -472,6 +473,11 @@ MapOnlyFn = Callable[[T], Callable[[Any], Any]]
 # function
 @overload
 def map_only(__type_or_types: Type2[T, S]) -> MapOnlyFn[Fn2[T, S, Any]]:
+    ...
+
+
+@overload
+def map_only(__type_or_types: Type3[T, S, U]) -> MapOnlyFn[Fn3[T, S, U, Any]]:
     ...
 
 
@@ -542,6 +548,18 @@ def tree_map_only(
     ...
 
 
+@overload
+def tree_map_only(
+    __type_or_types: Type3[T, S, U],
+    func: Fn3[T, S, U, Any],
+    tree: PyTree,
+    *rests: PyTree,
+    none_is_leaf: bool = True,
+    namespace: str = "torch",
+) -> PyTree:
+    ...
+
+
 def tree_map_only(
     __type_or_types: TypeAny,
     func: FnAny[Any],
@@ -575,6 +593,18 @@ def tree_map_only_(
 def tree_map_only_(
     __type_or_types: Type2[T, S],
     func: Fn2[T, S, Any],
+    tree: PyTree,
+    *rests: PyTree,
+    none_is_leaf: bool = True,
+    namespace: str = "torch",
+) -> PyTree:
+    ...
+
+
+@overload
+def tree_map_only_(
+    __type_or_types: Type3[T, S, U],
+    func: Fn3[T, S, U, Any],
     tree: PyTree,
     *rests: PyTree,
     none_is_leaf: bool = True,
@@ -646,6 +676,18 @@ def tree_all_only(
     ...
 
 
+@overload
+def tree_all_only(
+    __type_or_types: Type3[T, S, U],
+    pred: Fn3[T, S, U, bool],
+    tree: PyTree,
+    *,
+    none_is_leaf: bool = True,
+    namespace: str = "torch",
+) -> bool:
+    ...
+
+
 def tree_all_only(
     __type_or_types: TypeAny,
     pred: FnAny[bool],
@@ -674,6 +716,18 @@ def tree_any_only(
 def tree_any_only(
     __type_or_types: Type2[T, S],
     pred: Fn2[T, S, bool],
+    tree: PyTree,
+    *,
+    none_is_leaf: bool = True,
+    namespace: str = "torch",
+) -> bool:
+    ...
+
+
+@overload
+def tree_any_only(
+    __type_or_types: Type3[T, S, U],
+    pred: Fn3[T, S, U, bool],
     tree: PyTree,
     *,
     none_is_leaf: bool = True,
@@ -759,12 +813,12 @@ def broadcast_prefix(
 # _broadcast_to_and_flatten to check this.
 def _broadcast_to_and_flatten(
     tree: PyTree,
-    treespec: PyTreeSpec,
+    treespec: TreeSpec,
     *,
     none_is_leaf: bool = True,
     namespace: str = "torch",
 ) -> Optional[List[Any]]:
-    assert isinstance(treespec, PyTreeSpec)
+    assert isinstance(treespec, TreeSpec)
     full_tree = tree_unflatten([0] * treespec.num_leaves, treespec)
     try:
         return broadcast_prefix(
@@ -777,12 +831,12 @@ def _broadcast_to_and_flatten(
         return None
 
 
-def treespec_dumps(treespec: PyTreeSpec) -> str:
+def treespec_dumps(treespec: TreeSpec) -> str:
     """Serialize a treespec to a JSON string."""
-    if not isinstance(treespec, PyTreeSpec):
+    if not isinstance(treespec, TreeSpec):
         raise TypeError(
             f"treespec_dumps(spec): Expected `spec` to be instance of "
-            f"PyTreeSpec but got item of type {type(treespec)}."
+            f"TreeSpec but got item of type {type(treespec)}."
         )
     from ._pytree import (
         tree_structure as _tree_structure,
@@ -793,7 +847,7 @@ def treespec_dumps(treespec: PyTreeSpec) -> str:
     return _treespec_dumps(orig_treespec)
 
 
-def treespec_loads(serialized: str) -> PyTreeSpec:
+def treespec_loads(serialized: str) -> TreeSpec:
     """Deserialize a treespec from a JSON string."""
     from ._pytree import (
         tree_unflatten as _tree_unflatten,
@@ -811,7 +865,7 @@ class _DummyLeaf:
         return "*"
 
 
-def treespec_pprint(treespec: PyTreeSpec) -> str:
+def treespec_pprint(treespec: TreeSpec) -> str:
     dummy_tree = tree_unflatten(
         [_DummyLeaf() for _ in range(treespec.num_leaves)],
         treespec,
@@ -824,7 +878,7 @@ class PyTreeLeafSpecMeta(type(PyTreeSpec)):  # type: ignore[misc]
         return isinstance(instance, PyTreeSpec) and instance.is_leaf()
 
 
-class PyTreeLeafSpec(PyTreeSpec, metaclass=PyTreeLeafSpecMeta):
+class PyTreeLeafSpec(TreeSpec, metaclass=PyTreeLeafSpecMeta):
     def __new__(cls, none_is_leaf: bool = True) -> "PyTreeLeafSpec":
         return optree.treespec_leaf(none_is_leaf=none_is_leaf)  # type: ignore[return-value]
 
