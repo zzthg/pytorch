@@ -1454,6 +1454,7 @@ class TorchPatcher:
             torch.optim.SparseAdam,
             torch.optim.RAdam,
             torch.optim.LBFGS,
+            torch.optim.Adam,
         }
         for opt in optimizer_classes:
             if opt in excluded_optimizer_classes:
