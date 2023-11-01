@@ -2005,9 +2005,12 @@ class BenchmarkRunner:
         elif (self.args.bfloat16 or self.args.amp) and self.args.devices == ["cpu"]:
             self.autocast = torch.cpu.amp.autocast
 
-    def init_optimizer(self, name, device, params):
+    def init_optimizer(self, name, device, params, fused):
         if device == "cuda" and self.args.training and name not in CI_SKIP_OPTIMIZER:
-            self.optimizer = torch.optim.SGD(params, lr=0.01, foreach=True)
+            if fused:
+                self.optimizer = torch.optim.Adam(params, lr=0.01, fused=True)
+            else:
+                self.optimizer = torch.optim.Adam(params, lr=0.01, foreach=True)
         else:
             self.optimizer = None
 
@@ -2365,7 +2368,9 @@ class BenchmarkRunner:
             model_copy = None
             try:
                 model_copy = self.deepcopy_and_maybe_ddp(model)
-                self.init_optimizer(name, current_device, model_copy.parameters())
+                self.init_optimizer(
+                    name, current_device, model_copy.parameters(), False
+                )
                 correct_result = self.run_n_iterations(
                     model_copy, clone_inputs(example_inputs)
                 )
@@ -2385,7 +2390,9 @@ class BenchmarkRunner:
             model_copy = None
             try:
                 model_copy = self.deepcopy_and_maybe_ddp(model)
-                self.init_optimizer(name, current_device, model_copy.parameters())
+                self.init_optimizer(
+                    name, current_device, model_copy.parameters(), False
+                )
                 correct_rerun_result = self.run_n_iterations(
                     model_copy, clone_inputs(example_inputs)
                 )
@@ -2430,7 +2437,7 @@ class BenchmarkRunner:
             model_copy = None
             try:
                 model_copy = self.deepcopy_and_maybe_ddp(model)
-                self.init_optimizer(name, current_device, model_copy.parameters())
+                self.init_optimizer(name, current_device, model_copy.parameters(), True)
                 if self.args.export or self.args.export_aot_inductor:
                     # apply export on module directly
                     # no need for n iterations
@@ -2620,7 +2627,7 @@ class BenchmarkRunner:
         # Use distributed wrapping as necessary
         model = self.deepcopy_and_maybe_ddp(model)
 
-        self.init_optimizer(name, current_device, model.parameters())
+        self.init_optimizer(name, current_device, model.parameters(), True)
         with self.pick_grad(name, self.args.training):
             ok, total = Stats.reset_counters()
             experiment_kwargs = {}
