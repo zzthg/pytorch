@@ -13,6 +13,7 @@ import torch.nn.functional as F
 from torch.distributed import _functional_collectives as collectives
 import torchbenchmark
 import subprocess
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 from torchbench import TorchBenchmarkRunner
 from common import parse_args, patch_torch_manual_seed, cast_to_fp16
@@ -131,12 +132,13 @@ def run_one_rank(
 
     def run_eager():
         model_eager = model
-        # model_eager = DDP(
-        #     model,
-        #     device_ids=[my_rank],
-        #     output_device=my_rank,
-        #     # bucket_cap_mb=25,  # DDP default value
-        # )
+        if args.ddp:
+            model_eager = DDP(
+                model,
+                device_ids=[my_rank],
+                output_device=my_rank,
+                # bucket_cap_mb=25,  # DDP default value
+            )
 
         maybe_amp = contextlib.nullcontext
         if args.amp:
@@ -161,12 +163,13 @@ def run_one_rank(
             torch.profiler._utils._init_for_cuda_graphs()
 
         model_compiled = torch.compile(model, mode="reduce-overhead")
-        # model_compiled = DDP(
-        #     torch.compile(model, mode="reduce-overhead"),
-        #     device_ids=[my_rank],
-        #     output_device=my_rank,
-        #     bucket_cap_mb=args.ddp_bucket_cap_mb_for_compiled
-        # )
+        if args.ddp:
+            model_compiled = DDP(
+                torch.compile(model, mode="reduce-overhead"),
+                device_ids=[my_rank],
+                output_device=my_rank,
+                # bucket_cap_mb=args.ddp_bucket_cap_mb_for_compiled
+            )
 
         maybe_amp = contextlib.nullcontext
         if args.amp:
