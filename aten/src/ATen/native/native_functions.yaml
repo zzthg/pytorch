@@ -1647,6 +1647,7 @@
 - func: convolution(Tensor input, Tensor weight, Tensor? bias, SymInt[] stride, SymInt[] padding, SymInt[] dilation, bool transposed, SymInt[] output_padding, SymInt groups) -> Tensor
   dispatch:
     CompositeExplicitAutograd: convolution
+    NestedTensorCPU, NestedTensorCUDA: NestedTensor_convolution
   autogen: convolution.out
   tags: core
 
@@ -11477,6 +11478,8 @@
   structured_delegate: glu.out
   device_check: NoCheck   # TensorIterator
   python_module: nn
+  dispatch:
+    NestedTensorCPU, NestedTensorCUDA: NestedTensor_glu
 
 - func: glu_backward.grad_input(Tensor grad_output, Tensor self, int dim, *, Tensor(a!) grad_input) -> Tensor(a!)
   python_module: nn

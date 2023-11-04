@@ -1,5 +1,6 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/core/Tensor.h>
+#include <iostream>
 #include <ATen/Config.h>
 #include <ATen/Parallel.h>
 #include <ATen/TensorOperators.h>
@@ -971,11 +972,15 @@ static Tensor convolution_same(
     const Tensor &input, const Tensor &weight, const Tensor &bias,
     SymIntArrayRef stride, SymIntArrayRef dilation, c10::SymInt groups) {
 
+  if (input.is_nested()) {
+    return input;
+  }
+
   auto k = weight.dim();
   TORCH_CHECK(k > 2, "weight should have at least three dimensions");
   auto dim = static_cast<size_t>(k - 2);
   auto weight_sizes = weight.sym_sizes();
-  auto input_sizes = input.sym_sizes();
+  // auto input_sizes = input.sym_sizes();
   TORCH_CHECK(k == input.dim(),
               "Expected ", k, "-dimensional input for ",
               k, "-dimensional weight", weight_sizes, ", but got ",
@@ -996,7 +1001,7 @@ static Tensor convolution_same(
     auto s = stride.size() == 1 ? stride[0] : stride[i];
     auto d = dilation.size() == 1 ? dilation[0] : dilation[i];
     auto pad = pooling_same_mode_padding_lr(
-        input_sizes[i + 2], weight_sizes[i + 2], s, d);
+        input.size(i + 2), weight_sizes[i + 2], s, d);
     padding_l.push_back(pad.first);
     padding_r.push_back(pad.second);
     if (pad.first != pad.second) {
@@ -1174,6 +1179,13 @@ at::Tensor convolution(
   return at::_convolution(input, weight, bias, stride, padding, dilation,
                           transposed, output_padding, groups,
                           ctx.benchmarkCuDNN(), deterministic, ctx.userEnabledCuDNN(), ctx.allowTF32CuDNN());
+}
+
+at::Tensor NestedTensor_convolution(
+    const Tensor& input, const Tensor& weight, const c10::optional<Tensor>& bias_opt,
+    IntArrayRef stride, IntArrayRef padding, IntArrayRef dilation,
+    bool transposed, IntArrayRef output_padding, int64_t groups) {
+  return input;
 }
 
 at::Tensor convolution_overrideable(

@@ -601,6 +601,16 @@ def transpose_int(func, *args, **kwargs):
     )
 
     inp = new_kwargs.pop("input")
+    dim0 = new_kwargs["dim0"]
+    dim1 = new_kwargs["dim1"]
+    if inp.dim() == 4 and dim0 == 1 and dim1 == 2:
+        extracted_kwargs = extract_kwargs(inp)
+        extracted_kwargs['transposed'] = (dim0, dim1)
+        ret = NestedTensor(inp._values, extracted_kwargs)
+        return ret
+    if inp.dim() == 4 and dim0 == 2 and dim1 == 1 and inp._transposed == (1, 2):
+        return NestedTensor(inp._values, **extract_kwargs(inp))
+
     new_kwargs["dim0"] = _wrap_jagged_dim(inp.dim(), new_kwargs["dim0"], "transpose")
     new_kwargs["dim1"] = _wrap_jagged_dim(inp.dim(), new_kwargs["dim1"], "transpose")
 

@@ -39,6 +39,8 @@ class NestedTensor(torch.Tensor):
     _stride: Tuple[int, ...]
     # Indicates that the nth dimension is ragged
     _ragged_idx: int
+    # Indicates if the NestedTensor has been transposed
+    _transposed: Optional[Tuple[int, int]]
 
     @staticmethod
     def __new__(
@@ -69,7 +71,7 @@ class NestedTensor(torch.Tensor):
         )
         return r
 
-    def __init__(self, values, offsets, *, ragged_size=None, **kwargs):
+    def __init__(self, values, offsets, *, transposed=None, ragged_size=None, **kwargs):
         super().__init__()
         # Only support jagged for now.
         assert offsets is not None
@@ -97,6 +99,7 @@ class NestedTensor(torch.Tensor):
             )
         self._values = values
         self._offsets = offsets
+        self._transposed = transposed
 
     def values(self):
         return self._values

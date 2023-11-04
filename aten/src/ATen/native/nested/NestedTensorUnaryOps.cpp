@@ -124,6 +124,16 @@ Tensor& NestedTensor_silu_(Tensor& self){
   return self;
 }
 
+Tensor NestedTensor_glu(const Tensor& self_, const int64_t dim){
+  auto self = self_.contiguous();
+  return self;
+  // auto* nt_impl = get_nested_tensor_impl(self);
+  // const auto& sizes = nt_impl->get_nested_sizes();
+  // auto buffer = nt_impl->get_buffer().view({-1, self.size(-2), self.size(-1)});
+  // auto new_buffer = at::glu(buffer, dim).view(-1);
+  // return at::detail::make_tensor<NestedTensorImpl>(new_buffer, sizes);
+}
+
 Tensor sin_nested(const Tensor& self) {
   return map_nt(self, at::sin);
 }

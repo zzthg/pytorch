@@ -303,8 +303,7 @@ class Conv1d(_ConvNd):
             return F.conv1d(F.pad(input, self._reversed_padding_repeated_twice, mode=self.padding_mode),
                             weight, bias, self.stride,
                             _single(0), self.dilation, self.groups)
-        return F.conv1d(input, weight, bias, self.stride,
-                        self.padding, self.dilation, self.groups)
+        return F.conv1d(input, weight, bias, self.stride, self.padding, self.dilation, self.groups)
 
     def forward(self, input: Tensor) -> Tensor:
         return self._conv_forward(input, self.weight, self.bias)

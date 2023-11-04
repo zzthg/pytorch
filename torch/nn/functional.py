@@ -2478,7 +2478,8 @@ def batch_norm(
             eps=eps,
         )
     if training:
-        _verify_batch_size(input.size())
+        if not input.is_nested:
+            _verify_batch_size(input.size())
 
     return torch.batch_norm(
         input, weight, bias, running_mean, running_var, training, momentum, eps, torch.backends.cudnn.enabled
