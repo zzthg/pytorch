@@ -42,6 +42,7 @@ _conv2d_bn_pattern_example_inputs = (
 _quantized_conv2d_bn_pattern_example_inputs = (
     torch.randn(1, 1, 3, 3),  # x
     torch.randn(1, 1, 1, 1),  # conv_weight
+    torch.randn(1),           # conv_bias
     torch.randn(1),           # bn_weight
     torch.randn(1),           # bn_bias
     torch.randn(1),           # bn_running_mean
@@ -50,7 +51,6 @@ _quantized_conv2d_bn_pattern_example_inputs = (
 
 def _get_quantized_conv2d_bn_pattern_example_inputs_kwargs(
     is_per_channel: bool,
-    has_bias: bool,
     is_cuda: bool,
 ) -> Dict[str, Any]:
     """
@@ -64,8 +64,6 @@ def _get_quantized_conv2d_bn_pattern_example_inputs_kwargs(
     if is_per_channel:
         kwargs["scale"] = torch.tensor([1], dtype=torch.float)
         kwargs["zero_point"] = torch.tensor([0], dtype=torch.int)
-    if has_bias:
-        kwargs["conv_bias"] = torch.randn(1)
     if is_cuda:
         for k, v in kwargs.items():
             if isinstance(v, torch.Tensor):
@@ -171,7 +169,6 @@ def _append_qdq(x, is_per_channel, kwargs):
 def _get_quantized_qat_conv2d_bn_pattern(
     is_per_channel: bool,
     has_bias: bool,
-    bias_is_quantized: bool,
 ) -> Callable:
     """
     Return the quantized version of QAT conv + BN pattern.
@@ -186,6 +183,7 @@ def _get_quantized_qat_conv2d_bn_pattern(
     def _quantized_qat_conv2d_bn_pattern(
         x: torch.Tensor,
         conv_weight: torch.Tensor,
+        conv_bias: torch.Tensor,
         bn_weight: torch.Tensor,
         bn_bias: torch.Tensor,
         bn_running_mean: torch.Tensor,
@@ -200,25 +198,15 @@ def _get_quantized_qat_conv2d_bn_pattern(
         bias_shape[1] = -1
         scaled_weight = conv_weight * scale_factor.reshape(weight_shape)
         scaled_weight = _append_qdq(scaled_weight, is_per_channel, kwargs)
-        if has_bias:
-            zero_bias = torch.zeros_like(kwargs["conv_bias"], dtype=x.dtype)
-            if bias_is_quantized:
-                zero_bias = _append_qdq(zero_bias, is_per_channel, kwargs)
-            x = F.conv2d(x, scaled_weight, zero_bias)
-        else:
-            x = F.conv2d(x, scaled_weight, None)
+        x = F.conv2d(x, scaled_weight, conv_bias)
         x = x / scale_factor.reshape(bias_shape)
         if has_bias:
-            x = x + kwargs["conv_bias"].reshape(bias_shape)
+            x = x + conv_bias.reshape(bias_shape)
         x = F.batch_norm(x, bn_running_mean, bn_running_var, bn_weight, bn_bias, training=True, eps=bn_eps)
         return x
     return _quantized_qat_conv2d_bn_pattern
 
-def _get_folded_quantized_qat_conv2d_bn_pattern(
-    is_per_channel: bool,
-    has_bias: bool,
-    bias_is_quantized: bool,
-) -> Callable:
+def _get_folded_quantized_qat_conv2d_bn_pattern(is_per_channel: bool) -> Callable:
     """
     Quantized QAT conv - bn pattern with bn weights being folded into conv.
     """
@@ -228,6 +216,7 @@ def _get_folded_quantized_qat_conv2d_bn_pattern(
     def _folded_quantized_qat_conv2d_bn_pattern(
         x: torch.Tensor,
         conv_weight: torch.Tensor,
+        conv_bias: torch.Tensor,
         bn_weight: torch.Tensor,
         bn_bias: torch.Tensor,
         bn_running_mean: torch.Tensor,
@@ -235,13 +224,7 @@ def _get_folded_quantized_qat_conv2d_bn_pattern(
         **kwargs,
     ) -> torch.Tensor:
         conv_weight = _append_qdq(conv_weight, is_per_channel, kwargs)
-        if has_bias:
-            bias = kwargs["conv_bias"]
-            if bias_is_quantized:
-                bias = _append_qdq(bias, is_per_channel, kwargs)
-        else:
-            bias = None
-        x = F.conv2d(x, conv_weight, bias)
+        x = F.conv2d(x, conv_weight, conv_bias)
         x = F.batch_norm(x, bn_running_mean, bn_running_var, bn_weight, bn_bias, training=True, eps=bn_eps)
         return x
     return _folded_quantized_qat_conv2d_bn_pattern
@@ -373,13 +356,12 @@ def _get_conv_bn_pattern_nodes(r: ReplacedPatterns) -> Dict[str, Tuple[Node, Nod
     mapping["conv_weight"] = (o_conv_weight, r_conv_weight)
 
     # Extract conv bias
-    if len(p_conv.args) > 2 and len(r_conv.args) > 2:
-        p_conv_bias = p_conv.args[2]
-        r_conv_bias = r_conv.args[2]
+    p_conv_bias = p_conv.args[2] if len(p_conv.args) > 2 else None
+    r_conv_bias = r_conv.args[2] if len(r_conv.args) > 2 else None
+    if p_conv_bias is not None and r_conv_bias is not None:
         assert isinstance(p_conv_bias, Node)
         assert isinstance(r_conv_bias, Node)
         o_conv_bias = r.nodes_map[p_conv_bias]
-
         # If conv bias is quantized, extract the q - dq nodes
         if _is_dequantize(p_conv_bias):
             p_conv_bias, p_conv_bias_q, p_conv_bias_dq = _get_q_dq_nodes(p_conv_bias)
@@ -672,8 +654,8 @@ def _copy_over_q_dq_args(original_node: Node, replacement_node: Node):
 
 def _fold_conv_bn_qat(m: GraphModule) -> GraphModule:
     m = _fold_conv_bn_qat_helper(m, is_cuda=False)
-    if torch.cuda.is_available():
-        m = _fold_conv_bn_qat_helper(m, is_cuda=True)
+    #if torch.cuda.is_available():
+    #    m = _fold_conv_bn_qat_helper(m, is_cuda=True)
     return m
 
 def _fold_conv_bn_qat_helper(m: GraphModule, is_cuda: bool) -> GraphModule:
@@ -684,25 +666,22 @@ def _fold_conv_bn_qat_helper(m: GraphModule, is_cuda: bool) -> GraphModule:
     m.recompile()
     _duplicate_dequantize_node(m)
 
+    print("\n\n\n\n\n\n====================================================== don't mind")
+
     # Step (1): Replace QAT pattern with simple [conv - bn] pattern
     replacements = []
     replacement_options = itertools.product(
-        [True, False],  # is_per_channel
-        [True, False],  # has_bias
-        [True, False],  # bias_is_quantized
+        [True],  # is_per_channel
+        [True],  # has_bias
     )
-    for is_per_channel, has_bias, bias_is_quantized in replacement_options:
-        # For the cases without bias, `bias_is_quantized` is irrelevant, so here we arbitrarily
-        # filter out one of the values for this flag to avoid having duplicate patterns
-        if not has_bias and bias_is_quantized:
-            continue
+    for is_per_channel, has_bias in replacement_options:
         example_inputs = _quantized_conv2d_bn_pattern_example_inputs
-        kwargs = _get_quantized_conv2d_bn_pattern_example_inputs_kwargs(is_per_channel, has_bias, is_cuda)
-        match_pattern = _get_quantized_qat_conv2d_bn_pattern(is_per_channel, has_bias, bias_is_quantized)
+        kwargs = _get_quantized_conv2d_bn_pattern_example_inputs_kwargs(is_per_channel, is_cuda)
+        match_pattern = _get_quantized_qat_conv2d_bn_pattern(is_per_channel, has_bias)
         match_pattern = get_aten_graph_module(match_pattern, example_inputs, is_cuda, **kwargs)
-        replacement_pattern = _get_folded_quantized_qat_conv2d_bn_pattern(
-            is_per_channel, has_bias, bias_is_quantized,
-        )
+        print("********** orig model ", m)
+        print("********** match pattern ", match_pattern)
+        replacement_pattern = _get_folded_quantized_qat_conv2d_bn_pattern(is_per_channel)
         replacement_pattern = get_aten_graph_module(replacement_pattern, example_inputs, is_cuda, **kwargs)
         replacements.extend(
             replace_pattern_with_filters(
@@ -714,6 +693,8 @@ def _fold_conv_bn_qat_helper(m: GraphModule, is_cuda: bool) -> GraphModule:
         )
     m.recompile()
     _remove_extra_dequantize(m)
+
+    print("after replacement", m)
 
     for r in replacements:
         node_map = _get_conv_bn_pattern_nodes(r)
