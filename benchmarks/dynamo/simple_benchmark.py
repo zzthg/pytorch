@@ -128,8 +128,6 @@ def run_one_rank(
         # Remove randomeness when torch manual seed is called
         patch_torch_manual_seed()
 
-    runner.init_optimizer(name, device, model.parameters())
-
     def run_eager():
         model_eager = model
         if args.ddp:
@@ -139,6 +137,8 @@ def run_one_rank(
                 output_device=my_rank,
                 # bucket_cap_mb=25,  # DDP default value
             )
+
+        runner.optimizer = torch.optim.SGD(model_eager.parameters(), lr=0.01, foreach=True)
 
         maybe_amp = contextlib.nullcontext
         if args.amp:
@@ -162,14 +162,17 @@ def run_one_rank(
         if not args.disable_cudagraphs:
             torch.profiler._utils._init_for_cuda_graphs()
 
-        model_compiled = torch.compile(model, mode="reduce-overhead")
         if args.ddp:
             model_compiled = DDP(
-                torch.compile(model, mode="reduce-overhead"),
+                torch.compile(model),# mode="reduce-overhead"),
                 device_ids=[my_rank],
                 output_device=my_rank,
                 # bucket_cap_mb=args.ddp_bucket_cap_mb_for_compiled
             )
+        else:
+            model_compiled = torch.compile(model),# mode="reduce-overhead")
+
+        runner.optimizer = torch.optim.SGD(model_compiled.parameters(), lr=0.01, foreach=True)
 
         maybe_amp = contextlib.nullcontext
         if args.amp:
