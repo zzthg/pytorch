@@ -19,10 +19,23 @@ from torch.distributed.fsdp._shard_utils import _gather_state_dict
 
 class VerifyStateDictMixin:
     def _compare_tensor(self, orig_tensor, dist_tensor):
+
+        # print(f"before_gather {self.rank}: {dist_tensor=}")
         if isinstance(dist_tensor, (DTensor, ShardedTensor)):
             dist_tensor = _gather_state_dict({"mykey": dist_tensor}).pop("mykey")
+        # print(f"after_gather {self.rank}: {dist_tensor=}")
+
+        if self.rank==0:
+            print(f"{orig_tensor=}")
+            print(f"{dist_tensor=}")
+
         self.assertTrue(isinstance(dist_tensor, torch.Tensor))
-        self.assertTrue(torch.allclose(orig_tensor, dist_tensor))
+
+        if hasattr(dist_tensor, "trigger_wait"):
+            dist_tensor.trigger_wait()
+            dist_tensor = dist_tensor.elem
+
+        torch.testing.assert_close(orig_tensor, dist_tensor)
 
     def _verify_msd(
         self,
