@@ -2825,6 +2825,7 @@ class ComputedBuffer(Buffer):
     def num_reads(self):
         return len(self.get_read_writes().reads)
 
+    @cache_on_self
     def get_read_writes(self):
         with patch.object(FlexibleLayout, "allow_indexing", True):
             if self.data.get_reduction_type():
