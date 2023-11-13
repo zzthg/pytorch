@@ -1284,6 +1284,18 @@ class Scheduler:
             for name in names:
                 self.name_to_fused_node[name] = fe_node
 
+        for copy_nodes in V.graph.copy_nodes.values():
+            snodes = [None] * len(copy_nodes)
+            for name, i in copy_nodes:
+                snodes[i] = self.name_to_node[name]
+                removed_node_names.add(name)
+
+            fe_node = ForeachKernelSchedulerNode(self, snodes)
+            fe_nodes.append(fe_node)
+
+            for name, _ in copy_nodes:
+                self.name_to_fused_node[name] = fe_node
+
         self.nodes = [
             node for node in self.nodes if node.get_name() not in removed_node_names
         ] + fe_nodes

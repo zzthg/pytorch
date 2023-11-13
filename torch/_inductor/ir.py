@@ -2547,6 +2547,20 @@ class MutationLayout(Layout):
             ).data
 
         src.realize()
+
+        import operator
+
+        from .lowering import foreach_ops
+
+        if (
+            V.graph.current_node.target == aten.copy_.default
+            and V.graph.current_node.args[1].target == operator.getitem
+            and V.graph.current_node.args[1].args[0].target in foreach_ops
+        ):
+            foreach_node = V.graph.current_node.args[1].args[0]
+            index = V.graph.current_node.args[1].args[1]
+            # V.graph.register_list_copy(foreach_node, index, src.get_name())
+
         assert isinstance(src.data.layout, FlexibleLayout)
         src.data.layout = MutationLayout(dst)
         return src.data

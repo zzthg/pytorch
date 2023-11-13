@@ -226,6 +226,7 @@ class GraphLowering(torch.fx.Interpreter):
         self.aot_mode = aot_mode
         self.graph_id = graph_id
         self.scheduler = None
+        self.copy_nodes = defaultdict(list)
         self.nodes_prefer_channels_last = (
             self.find_nodes_prefer_channels_last() if self.layout_opt else set()
         )
@@ -455,6 +456,9 @@ class GraphLowering(torch.fx.Interpreter):
         name = "list_" + "_".join(buffer_names)
         self.lists[name] = buffer_names
         return name
+
+    def register_list_copy(self, foreach_node, index, name):
+        self.copy_nodes[foreach_node].append((name, index))
 
     def register_users_of(self, node_output):
         def register(value):
