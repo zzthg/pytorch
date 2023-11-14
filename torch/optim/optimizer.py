@@ -112,6 +112,9 @@ def _default_to_fused_or_foreach(params: List[torch.Tensor],
     if torch.jit.is_scripting() or differentiable:
         return False, False
 
+    if torch._utils.is_compiling():
+        return False, True
+
     fused_supported_devices = _get_fused_kernels_supported_devices()
     foreach_supported_devices = _get_foreach_kernels_supported_devices()
     fused = use_fused and all(

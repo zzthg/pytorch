@@ -27,8 +27,6 @@ class Adam(Optimizer):
                  fused: Optional[bool] = None):
         if not 0.0 <= lr:
             raise ValueError(f"Invalid learning rate: {lr}")
-        if isinstance(lr, Tensor) and foreach and not capturable:
-            raise ValueError("lr as a Tensor is not supported for capturable=False and foreach=True")
         if not 0.0 <= eps:
             raise ValueError(f"Invalid epsilon value: {eps}")
         if not 0.0 <= betas[0] < 1.0:
@@ -114,6 +112,8 @@ class Adam(Optimizer):
                     if group['amsgrad']:
                         # Maintains max of all exp. moving avg. of sq. grad. values
                         state['max_exp_avg_sq'] = torch.zeros_like(p, memory_format=torch.preserve_format)
+
+                    state['lrs'] = torch.zeros((), dtype=torch.float, device=p.device)
 
                 exp_avgs.append(state['exp_avg'])
                 exp_avg_sqs.append(state['exp_avg_sq'])
@@ -458,7 +458,7 @@ def _multi_tensor_adam(params: List[Tensor],
                        has_complex: bool,
                        beta1: float,
                        beta2: float,
-                       lr: Union[float, Tensor],
+                       lr: Union[float, Tensor, List[Tensor]],
                        weight_decay: float,
                        eps: float,
                        maximize: bool,
@@ -467,7 +467,7 @@ def _multi_tensor_adam(params: List[Tensor],
     if len(params) == 0:
         return
 
-    if isinstance(lr, Tensor) and not capturable:
+    if isinstance(lr, (Tensor, list)) and not capturable:
         raise RuntimeError("lr as a Tensor is not supported for capturable=False and foreach=True")
 
     # If compiling, the compiler will handle cudagraph checks, see note [torch.compile x capturable]
@@ -535,7 +535,7 @@ def _multi_tensor_adam(params: List[Tensor],
             torch._foreach_neg_(bias_correction2)
 
             # foreach_div doesn't allow a scalar as the first arg
-            torch._foreach_div_(bias_correction1, lr)
+            torch._foreach_div_(bias_correction1, [lr] * len(bias_correction1))
             torch._foreach_reciprocal_(bias_correction1)
 
             torch._foreach_sqrt_(bias_correction2)
