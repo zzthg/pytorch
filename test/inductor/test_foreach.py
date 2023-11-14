@@ -1,6 +1,5 @@
 # Owner(s): ["module: inductor"]
 
-import sys
 import unittest
 
 import torch
@@ -11,25 +10,23 @@ from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     IS_FBCODE,
     parametrize,
-    TEST_WITH_ROCM,
     TestCase,
 )
 
-from torch.testing._internal.inductor_utils import HAS_CPU, HAS_CUDA
+from torch.testing._internal.inductor_utils import (
+    check_model,
+    check_model_cuda,
+    requires_cuda,
+)
 
 aten = torch.ops.aten
 
-try:
-    try:
-        from .test_torchinductor import check_model, check_model_cuda, requires_cuda
-    except ImportError:
-        from test_torchinductor import check_model, check_model_cuda, requires_cuda
-except (unittest.SkipTest, ImportError) as e:
-    sys.stderr.write(f"{type(e)}: {e}\n")
-    if __name__ == "__main__":
-        sys.exit(0)
-    raise
-
+inplace_bin_ops_under_test = [
+    torch._foreach_add_,
+    torch._foreach_mul_,
+    torch._foreach_sub_,
+    torch._foreach_div_,
+]
 
 bin_ops_under_test = [
     torch._foreach_add,
@@ -55,6 +52,9 @@ all_ops = parametrize(
     "op", bin_ops_under_test + un_ops_under_test, name_fn=lambda f: f.__name__
 )
 bin_ops = parametrize("op", bin_ops_under_test, name_fn=lambda f: f.__name__)
+inplace_bin_ops = parametrize(
+    "op", inplace_bin_ops_under_test, name_fn=lambda f: f.__name__
+)
 scalar_bin_ops = parametrize("op", bin_ops_under_test[:4], name_fn=lambda f: f.__name__)
 decomp_ops = parametrize("op", compose_ops, name_fn=lambda f: f.__name__)
 
@@ -594,9 +594,26 @@ class ForeachTests(TestCase):
 
         self.assertEqual(torch._inductor.metrics.generated_kernel_count, 2)
 
+    @requires_cuda()
+    @inplace_bin_ops
+    def test_reinplacing(self, op):
+        def fn(a0, a1, b0, b1):
+            op([a0, a1], [b0, b1])
+            return [a0, a1]
+
+        inputs = (
+            torch.rand(10, 10, device="cuda:0"),
+            torch.rand(20, 20, device="cuda:0"),
+            torch.rand(10, 10, device="cuda:0"),
+            torch.rand(20, 20, device="cuda:0"),
+        )
+
+        self.check_model_cuda(fn, inputs, check_lowp=False)
+
+        self.assertEqual(torch._inductor.metrics.generated_kernel_count, 1)
+
 
 if __name__ == "__main__":
-    from torch._dynamo.test_case import run_tests
+    from torch.testing._internal.inductor_utils import run_inductor_tests
 
-    if (HAS_CPU or HAS_CUDA) and not TEST_WITH_ROCM:
-        run_tests(needs="filelock")
+    run_inductor_tests(skip_rocm=True)
