@@ -10,6 +10,7 @@
 #include <ATen/native/transformers/attention.h>
 #include <ATen/native/transformers/sdp_utils_cpp.h>
 #include <c10/util/irange.h>
+#include <mkl.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -47,6 +48,18 @@ inline void fill_stub(scalar_t* data, scalar_t val, int64_t size) {
   for (; d < size; d++) {
     data[d] = val;
   }
+}
+
+inline float exp_2nd(float x) {
+  static const float log2e = std::log2(std::exp(1.f));
+  static const float ln2 = std::log(2.f);
+  const float z = std::ceil(x * log2e);
+  const float f = x - z * ln2;
+  constexpr std::array<float, 3> exp_approx_f32_coeff{0.35815147f, 0.96963238f,
+                                                      1.f};
+  auto &&coeff = exp_approx_f32_coeff;
+  return ldexpf(coeff[0] * f * f + coeff[1] * f + coeff[2],
+                z); // same as a * std::pow(2, z) but more precise
 }
 
 template <typename scalar_t, int64_t q_split_size, int64_t kv_split_size>
@@ -136,6 +149,47 @@ void cpu_flash_attention(
   accum_t* buf_data = buf.data_ptr<accum_t>();
   scalar_t* buf_reduced_data = is_reduced_type ? buf_reduced.data_ptr<scalar_t>() : nullptr;
 
+  CBLAS_STORAGE storage = CblasPacked;
+  CBLAS_LAYOUT layout = CblasColMajor;
+  // int64_t kvSlice = (kvSize - 1) / kvSplitSize + 1;
+  // size_t pack_size1 = cblas_gemm_bf16bf16f32_pack_get_size(CblasBMatrix, kvSplitSize, qSplitSize, headSize);
+  // size_t pack_size2 = cblas_gemm_bf16bf16f32_pack_get_size(CblasBMatrix, headSize, qSplitSize, kvSplitSize);
+  // size_t k_pack_size = cblas_gemm_bf16bf16f32_pack_get_size(CblasAMatrix, kvSplitSize, qSplitSize, headSize);
+  // size_t v_pack_size = cblas_gemm_bf16bf16f32_pack_get_size(CblasAMatrix, headSize, qSplitSize, kvSplitSize);
+  // MKL_BF16 *k_pack = (MKL_BF16 *)malloc(batchSize * num_head * kvSlice * k_pack_size);
+  // MKL_BF16 *v_pack = (MKL_BF16 *)malloc(batchSize * num_head * kvSlice * v_pack_size);
+  // // std::cout << "START " << batchSize << " " << num_head << " " << kvSlice << std::endl;
+  // at::parallel_for(0, batchSize * num_head * kvSlice, 1, [&](int64_t begin, int64_t end) {
+  //   int64_t i = 0, j = 0, n = 0;
+  //   data_index_init(begin, i, batchSize, j, num_head, n, kvSlice);
+  //   int ompIdx = at::get_thread_num();
+  //   for (const auto z : c10::irange(begin, end)) {
+  //     // std::cout << "111 " << i << " " << j << " " << n << std::endl;
+  //     cblas_gemm_bf16bf16f32_pack(layout, CblasAMatrix, CblasTrans, kvSplitSize, qSplitSize, headSize,
+  //             (MKL_BF16 *)(k_data + i * kStrideB + j * kStrideH + n * kStrideN),
+  //             kStrideN, k_pack + i * kStrideB + j * kStrideH + n * k_pack_size);
+  //     // std::cout << "222 " << i << " " << j << " " << n << std::endl;
+  //     cblas_gemm_bf16bf16f32_pack(layout, CblasAMatrix, CblasNoTrans, headSize, qSplitSize, kvSplitSize,
+  //             (MKL_BF16 *)(v_data + i * vStrideB + j * vStrideH + n * vStrideN),
+  //             vStrideN, v_pack + i * vStrideB + j * vStrideH + n * v_pack_size);
+  //     // std::cout << "333 " << i << " " << j << " " << n << std::endl;
+  //     // Move to the next query
+  //     data_index_step(i, batchSize, j, num_head, n, kvSlice);
+  //   }
+  // });
+  // std::cout << "END" << std::endl;
+  // size_t destsizea, destsizeb;
+  // MKL_BF16 *desta, *destb;
+
+  // size_t destsize_1 = cblas_gemm_bf16bf16f32_pack_get_size(CblasAMatrix, kvSplitSize, qSplitSize, headSize);
+  // size_t destsize_2 = cblas_gemm_bf16bf16f32_pack_get_size(CblasBMatrix, kvSplitSize, qSplitSize, headSize);
+  // size_t destsize_3 = cblas_gemm_bf16bf16f32_pack_get_size(CblasAMatrix, headSize, qSplitSize, kvSplitSize);
+  // size_t destsize_4 = cblas_gemm_bf16bf16f32_pack_get_size(CblasBMatrix, headSize, qSplitSize, kvSplitSize);
+  // MKL_BF16 *dest_1 = (MKL_BF16 *)mkl_malloc(destsize_1 * num_thread, 64);
+  // MKL_BF16 *dest_2 = (MKL_BF16 *)mkl_malloc(destsize_2 * num_thread, 64);
+  // MKL_BF16 *dest_3 = (MKL_BF16 *)mkl_malloc(destsize_3 * num_thread, 64);
+  // MKL_BF16 *dest_4 = (MKL_BF16 *)mkl_malloc(destsize_4 * num_thread, 64);
+
   at::parallel_for(0, batchSize * num_head * qSlice, 1, [&](int64_t begin, int64_t end) {
     int64_t i = 0, j = 0, k = 0;
     data_index_init(begin, i, batchSize, j, num_head, k, qSlice);
@@ -146,6 +200,10 @@ void cpu_flash_attention(
     accum_t* qk_sum_data = qk_max_data + qSplitSize;
     accum_t* dst_data = qk_sum_data + qSplitSize;
     scalar_t* qk_reduced_data = is_reduced_type ? buf_reduced_data + ompIdx * qSplitSize * kvSplitSize : nullptr;
+    // auto dest1 = dest_1 + destsize_1 * ompIdx / sizeof(at::BFloat16);
+    // auto dest2 = dest_2 + destsize_2 * ompIdx / sizeof(at::BFloat16);
+    // auto dest3 = dest_3 + destsize_3 * ompIdx / sizeof(at::BFloat16);
+    // auto dest4 = dest_4 + destsize_4 * ompIdx / sizeof(at::BFloat16);
 
     for (const auto z : c10::irange(begin, end)) {
       (void)z; // Suppress unused variable
@@ -159,23 +217,57 @@ void cpu_flash_attention(
       int64_t num_keys = is_causal ? std::min(m + qBlockSize, kvSize) : kvSize;
       for (int64_t n = 0; n < num_keys; n += kvSplitSize) {
         int64_t kvBlockSize = std::min(kvSplitSize, kvSize - n);
+
+        // pack v1
+        size_t destsizea = cblas_gemm_bf16bf16f32_pack_get_size(CblasAMatrix, kvBlockSize, qBlockSize, headSize);
+        MKL_BF16 *desta = (MKL_BF16 *)mkl_malloc(destsizea, 64);
+        cblas_gemm_bf16bf16f32_pack(layout, CblasAMatrix, CblasTrans, kvBlockSize, qBlockSize, headSize,
+                (MKL_BF16 *)(k_data + i * kStrideB + j * kStrideH + n * kStrideN), kStrideN, desta);
+        size_t destsizeb = cblas_gemm_bf16bf16f32_pack_get_size(CblasBMatrix, kvBlockSize, qBlockSize, headSize);
+        MKL_BF16 *destb = (MKL_BF16 *)mkl_malloc(destsizeb, 64);
+        cblas_gemm_bf16bf16f32_pack(layout, CblasBMatrix, CblasNoTrans, kvBlockSize, qBlockSize, headSize,
+                (MKL_BF16 *)(q_data + i * qStrideB + j * qStrideH + m * qStrideM), qStrideM, destb);
+        cblas_gemm_bf16bf16f32_compute(layout, storage, storage, kvBlockSize, qBlockSize, headSize,
+                scaling_factor, desta, kStrideN, destb, qStrideM,
+                static_cast<accum_t>(0), qk_data, kvBlockSize);
+        mkl_free(desta);
+        mkl_free(destb);
+
+        // pack v2
+        // cblas_gemm_bf16bf16f32_pack(layout, CblasAMatrix, CblasTrans, kvBlockSize, qBlockSize, headSize,
+        //         (MKL_BF16 *)(k_data + i * kStrideB + j * kStrideH + n * kStrideN), kStrideN, dest1);
+        // cblas_gemm_bf16bf16f32_pack(layout, CblasBMatrix, CblasNoTrans, kvBlockSize, qBlockSize, headSize,
+        //         (MKL_BF16 *)(q_data + i * qStrideB + j * qStrideH + m * qStrideM), qStrideM, dest2);
+        // cblas_gemm_bf16bf16f32_compute(layout, storage, storage, kvBlockSize, qBlockSize, headSize,
+        //         scaling_factor, dest1, kStrideN, dest2, qStrideM,
+        //         static_cast<accum_t>(0), qk_data, kvBlockSize);
+
+        // pack v3
+        // MKL_BF16 *dest1 = (MKL_BF16 *)mkl_malloc(pack_size1, 64);
+        // cblas_gemm_bf16bf16f32_pack(layout, CblasBMatrix, CblasNoTrans, kvBlockSize, qBlockSize, headSize,
+        //         (MKL_BF16 *)(q_data + i * qStrideB + j * qStrideH + m * qStrideM), qStrideM, dest1);
+        // cblas_gemm_bf16bf16f32_compute(layout, storage, storage, kvBlockSize, qBlockSize, headSize,
+        //         scaling_factor, k_pack + i * kStrideB + j * kStrideH + n * k_pack_size, kStrideN, dest1, qStrideM,
+        //         static_cast<accum_t>(0), qk_data, kvBlockSize);
+        // mkl_free(dest1);
+
         // Calculate scale * q @ k.T
-        cpublas::gemm(
-            TransposeType::Transpose,
-            TransposeType::NoTranspose,
-            kvBlockSize,
-            qBlockSize,
-            headSize,
-            scaling_factor,
-            k_data + i * kStrideB + j * kStrideH +
-                n * kStrideN,
-            kStrideN,
-            q_data + i * qStrideB + j * qStrideH +
-                m * qStrideM,
-            qStrideM,
-            static_cast<accum_t>(0),
-            qk_data,
-            kvBlockSize);
+        // cpublas::gemm(
+        //     TransposeType::Transpose,
+        //     TransposeType::NoTranspose,
+        //     kvBlockSize,
+        //     qBlockSize,
+        //     headSize,
+        //     scaling_factor,
+        //     k_data + i * kStrideB + j * kStrideH +
+        //         n * kStrideN,
+        //     kStrideN,
+        //     q_data + i * qStrideB + j * qStrideH +
+        //         m * qStrideM,
+        //     qStrideM,
+        //     static_cast<accum_t>(0),
+        //     qk_data,
+        //     kvBlockSize);
         // Apply causal mask, fill unused with -inf
         if (is_causal && num_keys - n <= kvSplitSize) {
           for (const auto row : c10::irange(qBlockSize)) {
@@ -204,6 +296,7 @@ void cpu_flash_attention(
             [](Vec& x, Vec& y) { return x + y; },  qk_data + row * kvBlockSize, kvBlockSize);
           // exp_tmp <- exp(max[row] - max)
           exp_tmp = std::exp(qk_max_data[row] - tmp_max);
+          // exp_tmp = exp_2nd(qk_max_data[row] - tmp_max);
           // sum[row] <- sum + exp_tmp * sum[row]
           qk_sum_data[row] = tmp_sum + exp_tmp * qk_sum_data[row];
           // max[row] <- max
@@ -228,22 +321,47 @@ void cpu_flash_attention(
               dst_data + row * headSize, dst_data + row * headSize, headSize);
           }
         }
+
+        // pack v1
+        destsizea = cblas_gemm_bf16bf16f32_pack_get_size(CblasAMatrix, headSize, qBlockSize, kvBlockSize);
+        desta = (MKL_BF16 *)mkl_malloc(destsizea, 64);
+        cblas_gemm_bf16bf16f32_pack(layout, CblasAMatrix, CblasNoTrans, headSize, qBlockSize, kvBlockSize,
+                (MKL_BF16 *)(v_data + i * vStrideB + j * vStrideH + n * vStrideN), vStrideN, desta);
+        destsizeb = cblas_gemm_bf16bf16f32_pack_get_size(CblasBMatrix, headSize, qBlockSize, kvBlockSize);
+        destb = (MKL_BF16 *)mkl_malloc(destsizeb, 64);
+        cblas_gemm_bf16bf16f32_pack(layout, CblasBMatrix, CblasNoTrans, headSize, qBlockSize, kvBlockSize,
+                (MKL_BF16 *)(qk_reduced_data), kvBlockSize, destb);
+        cblas_gemm_bf16bf16f32_compute(layout, storage, storage, headSize, qBlockSize, kvBlockSize,
+                static_cast<accum_t>(1), desta, vStrideN, destb, kvBlockSize,
+                n == 0 ? static_cast<accum_t>(0) : static_cast<accum_t>(1), dst_data, headSize);
+        mkl_free(desta);
+        mkl_free(destb);
+
+        // pack v2
+        // cblas_gemm_bf16bf16f32_pack(layout, CblasAMatrix, CblasNoTrans, headSize, qBlockSize, kvBlockSize,
+        //         (MKL_BF16 *)(v_data + i * vStrideB + j * vStrideH + n * vStrideN), vStrideN, dest3);
+        // cblas_gemm_bf16bf16f32_pack(layout, CblasBMatrix, CblasNoTrans, headSize, qBlockSize, kvBlockSize,
+        //         (MKL_BF16 *)(qk_reduced_data), kvBlockSize, dest4);
+        // cblas_gemm_bf16bf16f32_compute(layout, storage, storage, headSize, qBlockSize, kvBlockSize,
+        //         static_cast<accum_t>(1), dest3, vStrideN, dest4, kvBlockSize,
+        //         n == 0 ? static_cast<accum_t>(0) : static_cast<accum_t>(1), dst_data, headSize);
+
         // Calculate Softmax(q @ k.T) @ v
-        cpublas::gemm(
-            TransposeType::NoTranspose,
-            TransposeType::NoTranspose,
-            headSize,
-            qBlockSize,
-            kvBlockSize,
-            static_cast<accum_t>(1),
-            v_data + i * vStrideB + j * vStrideH +
-                n * vStrideN,
-            vStrideN,
-            conditional_data_ptr(qk_data, qk_reduced_data),
-            kvBlockSize,
-            n == 0 ? static_cast<accum_t>(0) : static_cast<accum_t>(1),
-            dst_data,
-            headSize);
+        // cpublas::gemm(
+        //     TransposeType::NoTranspose,
+        //     TransposeType::NoTranspose,
+        //     headSize,
+        //     qBlockSize,
+        //     kvBlockSize,
+        //     static_cast<accum_t>(1),
+        //     v_data + i * vStrideB + j * vStrideH +
+        //         n * vStrideN,
+        //     vStrideN,
+        //     conditional_data_ptr(qk_data, qk_reduced_data),
+        //     kvBlockSize,
+        //     n == 0 ? static_cast<accum_t>(0) : static_cast<accum_t>(1),
+        //     dst_data,
+        //     headSize);
       }
       // reorder MHA output with strides
       for (int64_t row = 0; row < qBlockSize; ++row) {
@@ -264,6 +382,10 @@ void cpu_flash_attention(
     }
   });
 
+  // mkl_free(dest_1);
+  // mkl_free(dest_2);
+  // mkl_free(dest_3);
+  // mkl_free(dest_4);
 }
 
 template <typename scalar_t, int64_t q_split_size, int64_t kv_split_size>
@@ -554,24 +676,40 @@ void flash_attention_kernel_impl(
     c10::optional<double> scale) {
   auto q_seq_len = query.size(2);
 
-  AT_DISPATCH_FLOATING_TYPES_AND(kBFloat16, query.scalar_type(), "flash_attention", [&] {
-    if (q_seq_len >= 768) {
-      cpu_flash_attention<scalar_t, 256, 512>(
-        output, logsumexp, cum_seq_q, cum_seq_k,
-        max_q, max_k, philox_seed, philox_offset, debug_attn_mask,
-        query, key, value, dropout_p, is_causal, return_debug_mask, scale);
-    } else if (q_seq_len >= 192) {
-      cpu_flash_attention<scalar_t, 64, 512>(
-        output, logsumexp, cum_seq_q, cum_seq_k,
-        max_q, max_k, philox_seed, philox_offset, debug_attn_mask,
-        query, key, value, dropout_p, is_causal, return_debug_mask, scale);
-    } else {
-      cpu_flash_attention<scalar_t, 32, 512>(
-        output, logsumexp, cum_seq_q, cum_seq_k,
-        max_q, max_k, philox_seed, philox_offset, debug_attn_mask,
-        query, key, value, dropout_p, is_causal, return_debug_mask, scale);
-    }
-  });
+  // AT_DISPATCH_FLOATING_TYPES_AND(kBFloat16, query.scalar_type(), "flash_attention", [&] {
+  //   if (q_seq_len >= 768) {
+  //     cpu_flash_attention<scalar_t, 256, 512>(
+  //       output, logsumexp, cum_seq_q, cum_seq_k,
+  //       max_q, max_k, philox_seed, philox_offset, debug_attn_mask,
+  //       query, key, value, dropout_p, is_causal, return_debug_mask, scale);
+  //   } else if (q_seq_len >= 192) {
+  //     cpu_flash_attention<scalar_t, 64, 512>(
+  //       output, logsumexp, cum_seq_q, cum_seq_k,
+  //       max_q, max_k, philox_seed, philox_offset, debug_attn_mask,
+  //       query, key, value, dropout_p, is_causal, return_debug_mask, scale);
+  //   } else {
+  //     cpu_flash_attention<scalar_t, 32, 512>(
+  //       output, logsumexp, cum_seq_q, cum_seq_k,
+  //       max_q, max_k, philox_seed, philox_offset, debug_attn_mask,
+  //       query, key, value, dropout_p, is_causal, return_debug_mask, scale);
+  //   }
+  // });
+  if (q_seq_len >= 768) {
+    cpu_flash_attention<at::BFloat16, 256, 512>(
+      output, logsumexp, cum_seq_q, cum_seq_k,
+      max_q, max_k, philox_seed, philox_offset, debug_attn_mask,
+      query, key, value, dropout_p, is_causal, return_debug_mask, scale);
+  } else if (q_seq_len >= 192) {
+    cpu_flash_attention<at::BFloat16, 64, 512>(
+      output, logsumexp, cum_seq_q, cum_seq_k,
+      max_q, max_k, philox_seed, philox_offset, debug_attn_mask,
+      query, key, value, dropout_p, is_causal, return_debug_mask, scale);
+  } else {
+    cpu_flash_attention<at::BFloat16, 32, 512>(
+      output, logsumexp, cum_seq_q, cum_seq_k,
+      max_q, max_k, philox_seed, philox_offset, debug_attn_mask,
+      query, key, value, dropout_p, is_causal, return_debug_mask, scale);
+  }
 }
 
 void flash_attention_backward_kernel_impl(
@@ -599,27 +737,47 @@ void flash_attention_backward_kernel_impl(
   auto grad_out_contig = grad_out.contiguous();
   auto q_seq_len = query.size(1);
 
-  AT_DISPATCH_FLOATING_TYPES_AND(kBFloat16, query.scalar_type(), "flash_attention_backward", [&] {
-    if (q_seq_len >= 768) {
-      cpu_flash_attention_backward<scalar_t, 256, 512>(
-        grad_q, grad_k, grad_v, grad_out_contig,
-        query, key, value, out, logsumexp,
-        cum_seq_q, cum_seq_k, max_q, max_k, dropout_p,
-        is_causal, philox_seed, philox_offset, scale);
-    } else if (q_seq_len >= 192) {
-      cpu_flash_attention_backward<scalar_t, 64, 512>(
-        grad_q, grad_k, grad_v, grad_out_contig,
-        query, key, value, out, logsumexp,
-        cum_seq_q, cum_seq_k, max_q, max_k, dropout_p,
-        is_causal, philox_seed, philox_offset, scale);
-    } else {
-      cpu_flash_attention_backward<scalar_t, 32, 512>(
-        grad_q, grad_k, grad_v, grad_out_contig,
-        query, key, value, out, logsumexp,
-        cum_seq_q, cum_seq_k, max_q, max_k, dropout_p,
-        is_causal, philox_seed, philox_offset, scale);
-    }
-  });
+  // AT_DISPATCH_FLOATING_TYPES_AND(kBFloat16, query.scalar_type(), "flash_attention_backward", [&] {
+  //   if (q_seq_len >= 768) {
+  //     cpu_flash_attention_backward<scalar_t, 256, 512>(
+  //       grad_q, grad_k, grad_v, grad_out_contig,
+  //       query, key, value, out, logsumexp,
+  //       cum_seq_q, cum_seq_k, max_q, max_k, dropout_p,
+  //       is_causal, philox_seed, philox_offset, scale);
+  //   } else if (q_seq_len >= 192) {
+  //     cpu_flash_attention_backward<scalar_t, 64, 512>(
+  //       grad_q, grad_k, grad_v, grad_out_contig,
+  //       query, key, value, out, logsumexp,
+  //       cum_seq_q, cum_seq_k, max_q, max_k, dropout_p,
+  //       is_causal, philox_seed, philox_offset, scale);
+  //   } else {
+  //     cpu_flash_attention_backward<scalar_t, 32, 512>(
+  //       grad_q, grad_k, grad_v, grad_out_contig,
+  //       query, key, value, out, logsumexp,
+  //       cum_seq_q, cum_seq_k, max_q, max_k, dropout_p,
+  //       is_causal, philox_seed, philox_offset, scale);
+  //   }
+  // });
+
+  if (q_seq_len >= 768) {
+    cpu_flash_attention_backward<at::BFloat16, 256, 512>(
+      grad_q, grad_k, grad_v, grad_out_contig,
+      query, key, value, out, logsumexp,
+      cum_seq_q, cum_seq_k, max_q, max_k, dropout_p,
+      is_causal, philox_seed, philox_offset, scale);
+  } else if (q_seq_len >= 192) {
+    cpu_flash_attention_backward<at::BFloat16, 64, 512>(
+      grad_q, grad_k, grad_v, grad_out_contig,
+      query, key, value, out, logsumexp,
+      cum_seq_q, cum_seq_k, max_q, max_k, dropout_p,
+      is_causal, philox_seed, philox_offset, scale);
+  } else {
+    cpu_flash_attention_backward<at::BFloat16, 32, 512>(
+      grad_q, grad_k, grad_v, grad_out_contig,
+      query, key, value, out, logsumexp,
+      cum_seq_q, cum_seq_k, max_q, max_k, dropout_p,
+      is_causal, philox_seed, philox_offset, scale);
+  }
 }
 
 } // anonymous namespace

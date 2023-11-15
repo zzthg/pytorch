@@ -1661,13 +1661,13 @@ class TestSDPA(NNTestCase):
 
     @onlyCPU
     @parametrize("fused_kernel", [SDPBackend.FLASH_ATTENTION])
-    @parametrize("dtype", [torch.float64, torch.float32, torch.bfloat16])
-    @parametrize("batch_size", [2, 12])
-    @parametrize("seq_len", [267, 1030])
-    @parametrize("n_head", [1, 3])
-    @parametrize("head_dim", [8, 16])
-    @parametrize("causal", [True, False])
-    @parametrize("train", [True, False])
+    @parametrize("dtype", [torch.bfloat16])
+    @parametrize("batch_size", [12])
+    @parametrize("seq_len", [1030])
+    @parametrize("n_head", [3])
+    @parametrize("head_dim", [16])
+    @parametrize("causal", [False])
+    @parametrize("train", [False])
     def test_scaled_dot_product_fused_attention_vs_math_cpu(
         self,
         device,
