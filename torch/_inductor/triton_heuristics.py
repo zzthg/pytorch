@@ -36,7 +36,7 @@ from .utils import (
     triton_config_to_hashable,
 )
 
-
+logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
 if has_triton_package():
@@ -211,7 +211,6 @@ class CachingAutotuner(KernelInterface):
                 and self.size_hints is not None
                 # TODO not enable for H100 yet since we haven't got a chance to test this
                 # on H100. Will remove this check once we test on H100
-                and device_prop.major == 8
             ):
                 for triton_config, compiled_binary in zip(
                     self.configs, compiled_binaries
@@ -1076,7 +1075,7 @@ def reduction(
     rnumel = size_hints[-1]
     if len(size_hints) == 2:
         contiguous_config = triton_config_reduction(
-            size_hints, 1, (rnumel if 256 <= rnumel < 2048 else 2048)
+            size_hints, 1, 1024
         )
         outer_config = triton_config_reduction(size_hints, 128, 8)
         tiny_config = triton_config_reduction(
