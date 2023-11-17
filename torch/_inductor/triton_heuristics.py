@@ -225,7 +225,7 @@ class CachingAutotuner(KernelInterface):
                         continue
 
                     # make sure rblock is not too small
-                    if rblock <= 64:
+                    if xblock * rblock <= 64:
                         continue
 
                     # each SM of A100 has 65536 32-bit registers. To maximize
@@ -263,7 +263,10 @@ class CachingAutotuner(KernelInterface):
                         # no need to improve occupancy
                         continue
                     new_config = copy.deepcopy(triton_config)
-                    new_config.kwargs["RBLOCK"] = rblock // 2
+                    if rblock > 64:
+                        new_config.kwargs["RBLOCK"] = rblock // 2
+                    else:
+                        new_config.kwargs["XBLOCK"] = xblock // 2
                     if new_config in seen_configs:
                         continue
                     seen_configs.add(new_config)
