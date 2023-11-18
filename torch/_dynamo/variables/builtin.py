@@ -892,7 +892,7 @@ class BuiltinVariable(VariableTracker):
                 items = user_cls()
                 for x in arg.unpack_var_sequence(tx):
                     k, v = x.unpack_var_sequence(tx)
-                    k = ConstDictVariable.get_key(k)
+                    k = ConstDictVariable.get_key(tx, k)
                     items.update({k: v})
                 return ConstDictVariable(items, user_cls, mutable_local=MutableLocal())
         elif not args and kwargs:
@@ -1219,7 +1219,7 @@ class BuiltinVariable(VariableTracker):
             and name_var.value == "zeroed_out"
         ):
             obj.mutable_local = MutableLocal()
-            return val.add_options(self, obj, name_var)
+            return val
         elif (
             tx.output.side_effects.is_attribute_mutation(obj)
             and name_var.is_python_constant()
@@ -1228,12 +1228,6 @@ class BuiltinVariable(VariableTracker):
                 from .builder import wrap_fx_proxy
 
                 name = name_var.as_python_constant()
-                if name == "requires_grad":
-                    # TODO(voz): Make it work properly
-                    unimplemented(
-                        "mutating requires_grad can introduce a new leaf from non-leaf or vice versa in "
-                        "the middle of the graph, which aot_autograd does not currently know how to handle. "
-                    )
                 if name == "data":
                     # Remove the old reference in tracked fakes - if we don't do this
                     # new .data value size and shape differences will cause
