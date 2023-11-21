@@ -328,7 +328,9 @@ variable_list compiled_autograd(
   calls.reserve(
       check_exec_info ? graph_task.exec_info_.size() : dependencies.size() + 1);
 
+  int i = 0;
   while (!worklist.empty()) {
+    std::cout << "processing node " << i++ << std::endl;
     std::shared_ptr<Node> fn = std::move(worklist.back());
     worklist.pop_back();
     NodeCall& call = compiler_call.node_calls.lookup(fn);
@@ -393,6 +395,19 @@ variable_list compiled_autograd(
           pyinputs = check(PyObject_CallMethod(
               py_compiler,
               "tensor_pre_hook",
+              "Oii",
+              pyinputs.get(),
+              hook.first,
+              hook.second));
+        }
+        inputs = THPVariable_UnpackList(pyinputs);
+      }
+      if (!call.retains_grad_hooks.empty()) {
+        THPObjectPtr pyinputs(THPVariable_WrapList(inputs));
+        for (const auto& hook : call.retains_grad_hooks) {
+          pyinputs = check(PyObject_CallMethod(
+              py_compiler,
+              "retains_grad_hooks",
               "Oii",
               pyinputs.get(),
               hook.first,

@@ -777,6 +777,8 @@ static variable_list call_pre_hooks(Node& fn, variable_list inputs) {
 }
 
 static variable_list call_tensor_pre_hooks(Node& fn, variable_list inputs) {
+  std::cout << "engine.cpp: call_tensor_pre_hooks" << std::endl;
+  // TORCH_INTERNAL_ASSERT(false);
   for (const auto& hook : fn.tensor_pre_hooks()) {
     inputs = (*hook)(inputs);
   }
@@ -1227,6 +1229,31 @@ auto Engine::execute(
         *graph_root, outputs, accumulate_grad, min_topo_nr);
   }
 
+  std::cout << "splitting into compiled_autograd and not" << std::endl;
+  std::cout << "output (edges) size: " << outputs.size() << std::endl;
+
+  std::vector<std::shared_ptr<Node>> bfs{graph_root};
+  while (!bfs.empty()) {
+    std::cout << "iterating over node" << std::endl;
+    std::shared_ptr<Node> fn = std::move(bfs.back());
+    bfs.pop_back();
+
+    std::cout << "found edges: " << fn->next_edges().size() << std::endl;
+    for (const auto& edge: fn->next_edges()) {
+      if (!edge.is_valid()) {
+        std::cout << "invalid edge, skip" << std::endl;
+        continue;
+      }
+
+      int retain_grad_hooks = edge.function->retains_grad_hooks().size();
+      if (retain_grad_hooks > 0) {
+        auto n = edge.function;
+        call_tensor_pre_hooks(*n, inputs);
+      }
+      std::cout << "inserting new node, with retain_grad_hooks=" << retain_grad_hooks << std::endl;
+      bfs.emplace_back(edge.function);
+    }
+  }
   if (compiled_autograd != nullptr) {
     // see [Note: Compiled Autograd]
     TORCH_CHECK(

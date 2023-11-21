@@ -23,6 +23,7 @@ struct TORCH_API FunctionPreHook {
   virtual variable_list operator()(const variable_list& grads) = 0;
   // only implemented for python hooks, registers hook with compiled autograd
   virtual void compiled_args(torch::dynamo::autograd::CompiledNodeArgs& args) {
+    // TORCH_INTERNAL_ASSERT(false);
     throw std::runtime_error(
         std::string("compiled_args nyi, see [Note: Compiled Autograd] ") +
         typeid(*this).name());

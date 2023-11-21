@@ -6,6 +6,7 @@
 #include <torch/csrc/utils/torch_dispatch_mode.h>
 #include <typeindex>
 #include <vector>
+#include <iostream>
 
 // see [Note: Compiled Autograd]
 
@@ -74,6 +75,7 @@ struct NodeCall {
   uint32_t id;
   std::shared_ptr<Node> node;
   std::vector<std::pair<int, int>> tensor_pre_hooks;
+  std::vector<std::pair<int, int>> retains_grad_hooks;
   std::vector<int> pre_hooks;
   std::vector<int> post_hooks;
   std::vector<int> post_acc_grad_hooks;
@@ -344,12 +346,18 @@ class CompiledNodeArgs {
 #undef COLLECT_AS_BYTES
 
   void collect_hooks_from(Node* fn) {
-    TORCH_CHECK(
-        fn->retains_grad_hooks().empty(),
-        "retains_grad_hooks not implemented for compiled autograd");
+    // TORCH_CHECK(
+    //     fn->retains_grad_hooks().empty(),
+    //     "retains_grad_hooks not implemented for compiled autograd");
+    std::cout << "found tensor_pre_hooks: " << fn->tensor_pre_hooks().size() << std::endl;
     for (auto& i : fn->tensor_pre_hooks()) {
       i->compiled_args(*this);
     }
+    std::cout << "found retains_grad_hooks: " << fn->retains_grad_hooks().size() << std::endl;
+    std::cout << "ignoring" << std::endl;
+    // for (auto& [_, i] : fn->retains_grad_hooks()) {
+    //   i->compiled_args(*this);
+    // }
     for (auto& i : fn->pre_hooks()) {
       i->compiled_args(*this);
     }
@@ -357,6 +365,7 @@ class CompiledNodeArgs {
       i->compiled_args(*this);
     }
     collect_size(_node_call.tensor_pre_hooks.size());
+    collect_size(_node_call.retains_grad_hooks.size());
     collect_size(_node_call.pre_hooks.size());
     collect_size(_node_call.post_hooks.size());
     for (const auto& h : _node_call.tensor_pre_hooks) {
@@ -374,6 +383,12 @@ class CompiledNodeArgs {
     auto fn_id = _compiler.emplace_hook(std::move(obj));
     collect_size(fn_id);
     _node_call.tensor_pre_hooks.emplace_back(std::make_pair(fn_id, index));
+  }
+
+  void add_retains_grad_hook(c10::SafePyObject&& obj, int index) {
+    auto fn_id = _compiler.emplace_hook(std::move(obj));
+    collect_size(fn_id);
+    _node_call.retains_grad_hooks.emplace_back(std::make_pair(fn_id, index));
   }
 
   void add_pre_hook(c10::SafePyObject&& obj) {

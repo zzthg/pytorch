@@ -263,6 +263,8 @@ def backward(
     # The reason we repeat the same comment below is that
     # some Python versions print out the first line of a multi-line function
     # calls in the traceback and some print out the last line
+    import pdb
+    pdb.set_trace()
     Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
         tensors,
         grad_tensors_,

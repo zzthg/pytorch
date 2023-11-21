@@ -24,6 +24,7 @@
 #include <memory> // for unique_ptr
 #include <unordered_set>
 #include <utility>
+#include <iostream>
 
 using namespace torch::autograd;
 
@@ -172,6 +173,7 @@ PyObject* THPEngine_run_backward(
     PyObject* args,
     PyObject* kwargs) {
   HANDLE_TH_ERRORS
+  std::cout << "THPEngine_run_backward" << std::endl;
   PyObject* tensors = nullptr;
   PyObject* grad_tensors = nullptr;
   unsigned char keep_graph = 0;

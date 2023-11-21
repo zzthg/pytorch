@@ -13,6 +13,7 @@
 #include <torch/csrc/autograd/functions/basic_ops.h>
 
 #include <c10/util/irange.h>
+#include <iostream>
 
 namespace torch {
 namespace autograd {
@@ -96,6 +97,7 @@ static variable_list run_backward(
     const variable_list& inputs,
     bool allow_unused,
     bool accumulate_grad) {
+  std::cout << "autograd.cpp: run_backward" << std::endl;
   size_t num_tensors = outputs.size();
   edge_list roots;
   roots.reserve(num_tensors);

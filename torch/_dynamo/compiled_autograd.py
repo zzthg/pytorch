@@ -103,6 +103,20 @@ class AutogradCompilerInstance:
         )
 
     def tensor_pre_hook(self, inputs, hook_id, i: int):
+        # wtf
+        assert self.hooks_proxy is not None
+        hook = self.hooks_proxy[hook_id]
+        proxy = self.proxy_call_hook(
+            hook,
+            inputs[i],
+        )
+        with disable_proxy_modes_tracing():
+            inputs[i] = maybe_clone(inputs[i])
+            self.bind_tensors_to_proxies([inputs[i]], [proxy])
+        return inputs
+
+    def retains_grad_hooks(self, inputs, hook_id, i: int):
+        # wtf
         assert self.hooks_proxy is not None
         hook = self.hooks_proxy[hook_id]
         proxy = self.proxy_call_hook(

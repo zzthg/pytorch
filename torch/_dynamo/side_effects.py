@@ -379,6 +379,8 @@ class SideEffects:
             )
 
     def register_hook(self, tensor, hook, handle, name):
+        import pdb
+        pdb.set_trace()
         idx = len(self.tensor_hooks.keys())
         self.tensor_hooks[idx] = (tensor, hook, handle, name)
         assert not handle.idx

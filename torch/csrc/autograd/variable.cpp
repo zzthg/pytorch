@@ -716,6 +716,7 @@ void VariableHooks::remove_hook(const at::TensorBase& self, unsigned pos)
 unsigned VariableHooks::_register_hook(
     const at::TensorBase& self,
     std::function<at::TensorBase(const at::TensorBase&)> hook) const {
+  std::cout << "VariableHooks::_register_hook" << std::endl;
   TORCH_CHECK(
       self.requires_grad(),
       "cannot register a hook on a variable that "

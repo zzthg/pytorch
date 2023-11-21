@@ -126,6 +126,7 @@ int64_t TensorBase::_version() const {
 }
 
 void TensorBase::retain_grad() const {
+  std::cout << "TensorBase::retain_grad" << std::endl;
   impl::GetVariableHooks()->retain_grad(*this);
 }
 

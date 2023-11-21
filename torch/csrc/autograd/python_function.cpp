@@ -39,6 +39,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 using namespace torch;
 using namespace torch::autograd;
@@ -1042,6 +1043,8 @@ static PyObject* get_base_setup_context() {
 
 PyObject* THPFunction_apply(PyObject* cls, PyObject* inputs) {
   HANDLE_TH_ERRORS
+
+  std::cout << "THPFunction_apply" << std::endl;
 
   // save a local copy of seq_id before it gets incremented
   auto seq_id = at::sequence_number::peek();

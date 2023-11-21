@@ -475,11 +475,12 @@ known_failing_tests = {
     "test_reentrant_with_callbacks_both_depths",  # type object 'MyReentrantFunc' has no attribute '_compiled_autograd_key'
     "test_reentrant_with_callbacks_depth_0",  # type object 'MyReentrantFunc' has no attribute '_compiled_autograd_key'
     "test_reentrant_with_callbacks_depth_1",  # type object 'MyReentrantFunc' has no attribute '_compiled_autograd_key'
-    "test_retain_grad_cycle",  # retains_grad_hooks not implemented for compiled autograd
-    "test_retain_grad_inplace",  # retains_grad_hooks not implemented for compiled autograd
-    "test_retain_grad_inplace_over_view",  # retains_grad_hooks not implemented for compiled autograd
-    "test_retains_grad_can_always_observe_tensor_prehook",  # retains_grad_hooks not implemented for compiled autograd
-    "test_retains_grad_inplace_multiple_outputs",  # retains_grad_hooks not implemented for compiled autograd
+    # "test_retain_grad_cycle",  # retains_grad_hooks not implemented for compiled autograd
+    # "test_retain_grad_inplace",  # retains_grad_hooks not implemented for compiled autograd
+    # "test_retain_grad_inplace_over_view",  # retains_grad_hooks not implemented for compiled autograd
+    # "test_retains_grad_can_always_observe_tensor_prehook",  # retains_grad_hooks not implemented for compiled autograd
+    # "test_retains_grad_inplace_multiple_outputs",  # retains_grad_hooks not implemented for compiled autograd
+    # "test_retain_grad",  # RuntimeError: retains_grad_hooks not implemented for compiled autograd
     "test_return_leaf",  # type object 'Identity' has no attribute '_compiled_autograd_key'
     "test_return_leaf_inplace",  # type object 'Inplace' has no attribute '_compiled_autograd_key'
     "test_save_none_for_backward",  # type object 'MyFn' has no attribute '_compiled_autograd_key'
@@ -490,7 +491,7 @@ known_failing_tests = {
     "test_setup_context_when_forward_has_default_args",  # type object 'PowFunction' has no attribute '_compiled_autograd_key'
     "test_simple_reentrant",  # type object 'Reenter' has no attribute '_compiled_autograd_key'
     "test_tensor_hooks_inplace_multiple_outputs",  # type object 'DoubleMul' has no attribute '_compiled_autograd_key'
-    "test_to_sparse_backward",  # backend='inner_compiler' raised:
+    "test_to_sparse_backward",  # backend='inner_compiler' raised: NotImplementedError: Cannot access storage of SparseTensorImpl
     "test_too_many_grads",  # type object 'MyFn' has no attribute '_compiled_autograd_key'
     "test_accumulate_grad",  # RuntimeError: compiled_autograd does not support create_graph
     "test_anomaly_assign_parent_cleanup",  # RuntimeError: compiled_autograd does not support create_graph
@@ -527,12 +528,11 @@ known_failing_tests = {
     "test_no_grad_copy_sparse",  # AttributeError: type object 'MyFunc' has no attribute '_compiled_autograd_key'
     "test_once_differentiable",  # RuntimeError: compiled_autograd does not support create_graph
     "test_prehook_ordering",  # RuntimeError: specifying inputs= with .backward() not yet implemented for compiled autograd
-    "test_retain_grad",  # RuntimeError: retains_grad_hooks not implemented for compiled autograd
     "test_return_duplicate",  # AttributeError: type object 'DoubleDuplicate' has no attribute '_compiled_autograd_key'
     "test_return_duplicate_inplace",  # AttributeError: type object 'DoubleInplace' has no attribute '_compiled_autograd_key'
     "test_saved_variable_packing_unpacking_saved_original_with_hooks",  # RuntimeError: compiled_autograd
-    "test_select_sum",  # torch.autograd.gradcheck.GradcheckError: While computing batched gradients
-    "test_unrelated_inputs",  # torch.autograd.gradcheck.GradcheckError: While computing batched gradients
+    "test_select_sum",  # torch.autograd.gradcheck.GradcheckError: While computing batched gradients, got: Cannot access storage of BatchedTensorImpl
+    "test_unrelated_inputs",  # torch.autograd.gradcheck.GradcheckError: While computing batched gradients, got: Cannot access storage of BatchedTensorImpl
     "test_will_engine_execute_node",  # RuntimeError: specifying inputs= with .backward() not yet implemented for compiled autograd
     "test_backward_to_node",  # RuntimeError: specifying inputs= with .backward() not yet implemented for compiled autograd
 }

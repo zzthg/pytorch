@@ -1677,7 +1677,7 @@ class TestAutograd(TestCase):
         sum(rx, ry).sum().backward()
         self.assertTrue(was_called[0])
 
-    def test_retain_grad(self):
+    def test_retain_grad_test1(self):
         input = torch.rand(1, 3, requires_grad=True)
         h1 = input * 3
         out = (h1 * h1).sum()
@@ -1688,6 +1688,8 @@ class TestAutograd(TestCase):
 
         # Gradient should be accumulated
         out.backward(retain_graph=True)
+        import pdb
+        pdb.set_trace()
         self.assertEqual(h1 * 2, h1.grad)
         out.backward(retain_graph=True)
         self.assertEqual(h1 * 4, h1.grad)
