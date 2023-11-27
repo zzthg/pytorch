@@ -79,7 +79,7 @@ def post_grad_passes(gm: torch.fx.GraphModule, is_inference: bool):
 
         group_batch_fusion_post_grad_passes(gm.graph)
         remove_noop_ops(gm.graph)
-
+        print("### graph", gm.graph)
         for patterns in pass_patterns:
             patterns.apply(gm.graph)
         if is_inference:

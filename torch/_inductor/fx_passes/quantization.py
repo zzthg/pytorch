@@ -323,7 +323,6 @@ def _is_valid_quantized_linear_optimization_pattern(output_dtype):
                 qlinear_node_after_weight_prepack, "output_dtype", 9, output_dtype
             )
         return True
-
     return fn
 
 
@@ -367,6 +366,7 @@ def _register_quantized_linear_lowering(
             kwargs["postop_name"] == "none"
         )  # Expected no post op fused in weight prepack phase
 
+        # unary_attr.algorithm_attr = "none"
         computation_args = (
             x,
             x_scale,
@@ -382,6 +382,8 @@ def _register_quantized_linear_lowering(
             unary_attr.scalars_attr,
             unary_attr.algorithm_attr,
         )
+        print("unary_attr.algorithm_attr", unary_attr.algorithm_attr)
+        print("QLinear register_quantized_linear_lowering", counters["inductor"]["qlinear_unary_matcher_count"])
         counters["inductor"]["qlinear_unary_matcher_count"] += 1
         counters["inductor"]["qlinear_unary_matcher_nodes"] += len(match.nodes)
         return L[computation_op](*computation_args)
@@ -455,6 +457,7 @@ def _register_quantized_conv_binary_lowering(
 
 
 def _register_quantization_unary_fusion():
+    from .mkldnn_fusion import _gelu_fusion_1
     class UnaryAttr:
         def __init__(self, op_name: str, scalars_attr=None, algorithm_attr=None):
             self.op_name = op_name
@@ -520,9 +523,13 @@ def _register_quantization_unary_fusion():
                 dtype=original_pattern_output_dtype,
             ),
             UnaryAttr("gelu", [], ""): generate_pattern_with_output_quant(
-                generate_pattern_with_unary(qlinear_pt2e_pattern, aten.gelu.default),
+                _gelu_fusion_1(qlinear_pt2e_pattern),
                 dtype=original_pattern_output_dtype,
             ),
+            # UnaryAttr("gelu", [], "tanh"): generate_pattern_with_output_quant(
+            #     generate_pattern_with_unary(qlinear_pt2e_pattern, aten.gelu.default),
+            #     dtype=original_pattern_output_dtype,
+            # ),
         }
 
         for unary_attr, patterns in linear_unary_replace_patterns.items():
