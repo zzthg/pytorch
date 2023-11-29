@@ -96,6 +96,7 @@ class C10_API IncludeDispatchKeyGuard {
   // on destruction
   PODLocalDispatchKeySet* tls_;
   DispatchKeySet include_;
+  DispatchKeySet exclude_;
 };
 
 class C10_API ExcludeDispatchKeyGuard {

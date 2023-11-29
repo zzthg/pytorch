@@ -47,15 +47,20 @@ void _force_tls_local_dispatch_key_set(LocalDispatchKeySet key_set) {
 // RAII API
 
 IncludeDispatchKeyGuard::IncludeDispatchKeyGuard(DispatchKeySet include)
-    : tls_(&raw_local_dispatch_key_set), include_(include - tls_->included()) {
+    : tls_(&raw_local_dispatch_key_set),
+      include_(include - tls_->included()),
+      exclude_(include & tls_->excluded()) {
   if (!include_.empty()) {
+    auto _include = tls_->included() | include_;
     tls_->set_included(tls_->included() | include_);
+    tls_->set_excluded(tls_->excluded() - exclude_);
   }
 }
 
 IncludeDispatchKeyGuard::~IncludeDispatchKeyGuard() {
   if (!include_.empty()) {
     tls_->set_included(tls_->included() - include_);
+    tls_->set_excluded(tls_->excluded() | exclude_);
   }
 }
 

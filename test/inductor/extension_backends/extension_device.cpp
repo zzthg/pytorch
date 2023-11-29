@@ -12,8 +12,16 @@
 #include <ATen/EmptyTensor.h>
 #include <ATen/core/GeneratorForPrivateuseone.h>
 
+#include <ATen/ATen.h>
+#include <ATen/NativeFunctions.h>
+#include <torch/library.h>
+
+#include <torch/csrc/jit/runtime/operator.h>
+
 static uint64_t op_counter = 0;
 static uint64_t last_saved_value = 0;
+
+using namespace at;
 
 // register guard
 namespace at {
@@ -34,6 +42,26 @@ at::Tensor custom_add_Tensor(const at::Tensor & self, const at::Tensor & other, 
 at::Tensor custom_mul_Tensor(const at::Tensor & self, const at::Tensor & other) {
   op_counter += 1;
   // Since this custom device is just for testing, not bothering to implement kernels.
+  return at::empty(self.sizes(), self.options());
+}
+
+at::Tensor custom_where_ScalarSelf(const at::Tensor & condition, const at::Scalar & self, const at::Tensor & other) {
+  op_counter += 1;
+  return at::empty(condition.sizes(), condition.options());
+}
+
+at::Tensor custom_where_ScalarOther(const at::Tensor & condition, const at::Tensor & self, const at::Scalar & other) {
+  op_counter += 1;
+  return at::empty(condition.sizes(), condition.options());
+}
+
+at::Tensor custom_where_Scalar(const at::Tensor & condition, const at::Scalar & self, const at::Scalar & other) {
+  op_counter += 1;
+  return at::empty(condition.sizes(), condition.options());
+}
+
+at::Tensor custom_lt_Tensor(const at::Tensor & self, const at::Tensor & other) {
+  op_counter += 1;
   return at::empty(self.sizes(), self.options());
 }
 
@@ -130,12 +158,30 @@ at::Tensor custom_empty_memory_format(at::IntArrayRef size,
                                    memory_format);
 }
 
+at::Tensor custom_empty(c10::IntArrayRef size, c10::optional<at::ScalarType> dtype_opt) {
+  op_counter += 1;
+
+  constexpr c10::DispatchKeySet private_use_ks(c10::DispatchKey::PrivateUse1);
+  auto dtype = c10::dtype_or_default(dtype_opt);
+  return  at::detail::empty_generic(size, &global_custom_alloc, private_use_ks, dtype, c10::nullopt);
+}
+
 at::Tensor custom_empty_strided(c10::IntArrayRef size, c10::IntArrayRef stride, c10::optional<at::ScalarType> dtype_opt, c10::optional<at::Layout> layout_opt, c10::optional<at::Device> device_opt, c10::optional<bool> pin_memory_opt) {
   op_counter += 1;
 
   constexpr c10::DispatchKeySet private_use_ks(c10::DispatchKey::PrivateUse1);
   auto dtype = c10::dtype_or_default(dtype_opt);
   return  at::detail::empty_strided_generic(size, stride, &global_custom_alloc, private_use_ks, dtype);
+}
+
+at::Tensor custom_empty_memory_format(
+    c10::SymIntArrayRef sym_size,
+    c10::optional<c10::ScalarType> dtype,
+    c10::optional<c10::Layout> layout,
+    c10::optional<c10::Device> device,
+    c10::optional<bool> pin_memory,
+    c10::optional<c10::MemoryFormat> memory_format) {
+  return custom_empty(C10_AS_INTARRAYREF_SLOW(sym_size), dtype);
 }
 
 // This macro does the heavy lifting.
@@ -152,6 +198,10 @@ TORCH_LIBRARY_IMPL(aten, PrivateUse1, m) {
   m.impl("mul.Tensor", &custom_mul_Tensor);
   m.impl("to.Device", &custom_to_device);
   m.impl("fill_.Scalar", &custom_fill__scalar);
+  m.impl("lt.Tensor", &custom_lt_Tensor);
+  m.impl("where.ScalarSelf", &custom_where_ScalarSelf);
+  m.impl("where.ScalarOther", &custom_where_ScalarOther);
+  m.impl("where.Scalar", &custom_where_Scalar);
   m.impl("_copy_from", &custom__copy_from);
   m.impl("empty.memory_format", &custom_empty_memory_format);
   m.impl("empty_strided", &custom_empty_strided);

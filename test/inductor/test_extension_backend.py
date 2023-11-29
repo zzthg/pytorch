@@ -75,6 +75,8 @@ class ExtensionBackendTests(TestCase):
             verbose=True,
         )
 
+        torch.utils.rename_privateuse1_backend("extension_device")
+
     @classmethod
     def tearDownClass(cls):
         cls._stack.close()
@@ -100,8 +102,6 @@ class ExtensionBackendTests(TestCase):
         os.chdir(self.old_working_dir)
 
     def test_open_device_registration(self):
-        torch.utils.rename_privateuse1_backend("extension_device")
-
         register_backend_for_device(
             "extension_device", ExtensionScheduling, ExtensionWrapperCodegen
         )
@@ -136,6 +136,30 @@ class ExtensionBackendTests(TestCase):
         )
         opt_fn(x, y, z)
         res = opt_fn(x, y, z)
+        self.assertEqual(ref, res.to(device="cpu"))
+
+    def test_python_registration(self):
+        device = self.module.custom_device()
+        x = torch.empty(2, 16).to(device=device).fill_(1)
+        y = torch.empty(2, 16).to(device=device).fill_(2)
+        z = torch.empty(2, 16).to(device=device).fill_(3)
+        ref = torch.empty(2, 16).fill_(5)
+
+        self.assertTrue(x.device == device)
+        self.assertTrue(y.device == device)
+        self.assertTrue(z.device == device)
+
+        def fn_inv_sub(a, b):
+            return a + b
+
+        def wrapper_fn_sub(*args, **kwargs):
+            a, b = args
+            # with torch._C._IncludeDispatchKeyGuard(DispatchKeySet(DispatchKey.Python)):
+            return fn_inv_sub(a, b)
+
+        custom_op_lib_xpu_impl = torch.library.Library("aten", "IMPL")
+        custom_op_lib_xpu_impl.impl("sub.Tensor", wrapper_fn_sub, "PrivateUse1")
+        res = x - y
         self.assertEqual(ref, res.to(device="cpu"))
 
 
