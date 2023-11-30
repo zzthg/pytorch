@@ -705,15 +705,12 @@ void initDispatchBindings(PyObject* module) {
       c10::impl::ForceDispatchKeyGuard,
       c10::DispatchKeySet,
       c10::DispatchKeySet>(m, "_ForceDispatchKeyGuard");
-  py_context_manager<c10::impl::IncludeDispatchKeyGuard, c10::DispatchKey>(
+  py_context_manager<c10::impl::IncludeDispatchKeyGuard, c10::DispatchKeySet>(
       m, "_IncludeDispatchKeyGuard");
   py_context_manager<c10::impl::ExcludeDispatchKeyGuard, c10::DispatchKeySet>(
       m, "_ExcludeDispatchKeyGuard");
   py_context_manager<SetExcludeDispatchKeyGuard, c10::DispatchKey, bool>(
       m, "_SetExcludeDispatchKeyGuard");
-
-  py_context_manager<c10::impl::IncludeDispatchKeyGuard, c10::DispatchKeySet>(
-      m, "_IncludeDispatchKeyGuard");
 
   py_context_manager_DEPRECATED<at::AutoDispatchBelowAutograd>(
       m, "_AutoDispatchBelowAutograd");
