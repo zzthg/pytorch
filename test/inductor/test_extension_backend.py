@@ -161,6 +161,30 @@ class ExtensionBackendTests(TestCase):
         res = x - y
         self.assertEqual(res.to("cpu"), ref)
 
+    @unittest.skip("!check_has_torch_dispatch(obj) INTERNAL ASSERT FAILED")
+    def test_compile_registration(self):
+        torch.utils.rename_privateuse1_backend("extension_device")
+        device = self.module.custom_device()
+        x = torch.empty(2, 16).to(device=device).fill_(1)
+        y = torch.empty(2, 16).to(device=device).fill_(2)
+        ref = torch.empty(2, 16).fill_(3)
+
+        self.assertTrue(x.device == device)
+        self.assertTrue(y.device == device)
+
+        def fn_inv_sub(a, b):
+            return a + b
+
+        opt_fn_inv_sub = torch.compile(fn_inv_sub)
+        def wrapper_fn_sub(*args, **kwargs):
+            a, b = args
+            with torch._C._SetExcludeDispatchKeyGuard(torch._C.DispatchKey.Python, False):
+                return opt_fn_inv_sub(a, b)
+
+        custom_op_lib_xpu_impl = torch.library.Library("aten", "IMPL")
+        custom_op_lib_xpu_impl.impl("sub.Tensor", wrapper_fn_sub, "PrivateUse1")
+        res = x - y
+        self.assertEqual(res.to("cpu"), ref)
 
 if __name__ == "__main__":
     from torch._dynamo.test_case import run_tests
