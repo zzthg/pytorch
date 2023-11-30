@@ -174,16 +174,6 @@ at::Tensor custom_empty_strided(c10::IntArrayRef size, c10::IntArrayRef stride, 
   return  at::detail::empty_strided_generic(size, stride, &global_custom_alloc, private_use_ks, dtype);
 }
 
-at::Tensor custom_empty_memory_format(
-    c10::SymIntArrayRef sym_size,
-    c10::optional<c10::ScalarType> dtype,
-    c10::optional<c10::Layout> layout,
-    c10::optional<c10::Device> device,
-    c10::optional<bool> pin_memory,
-    c10::optional<c10::MemoryFormat> memory_format) {
-  return custom_empty(C10_AS_INTARRAYREF_SLOW(sym_size), dtype);
-}
-
 // This macro does the heavy lifting.
 // With TORCH_LIBRARY_IMPL, you can register custom kernels for your backend.
 // For open registration, we're registering all of our kernels to the PrivateUse1 dispatch key.
