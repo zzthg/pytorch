@@ -41,7 +41,7 @@ except unittest.SkipTest:
 
 run_and_get_cpp_code = test_torchinductor.run_and_get_cpp_code
 TestCase = test_torchinductor.TestCase
-
+enable_eager_compile = False
 
 def remove_build_path():
     if sys.platform == "win32":
@@ -161,21 +161,21 @@ class ExtensionBackendTests(TestCase):
         res = x - y
         self.assertEqual(res.to("cpu"), ref)
 
-    @unittest.skip("!check_has_torch_dispatch(obj) INTERNAL ASSERT FAILED")
+    @unittest.skipIf(enable_eager_compile, "!check_has_torch_dispatch(obj) INTERNAL ASSERT FAILED")
     def test_compile_registration(self):
         torch.utils.rename_privateuse1_backend("extension_device")
+        register_backend_for_device(
+            "extension_device", ExtensionScheduling, ExtensionWrapperCodegen
+        )
         device = self.module.custom_device()
         x = torch.empty(2, 16).to(device=device).fill_(1)
         y = torch.empty(2, 16).to(device=device).fill_(2)
-        ref = torch.empty(2, 16).fill_(3)
+        ref = torch.empty(2, 16).fill_(-1)
 
         self.assertTrue(x.device == device)
         self.assertTrue(y.device == device)
 
-        def fn_inv_sub(a, b):
-            return a + b
-
-        opt_fn_inv_sub = torch.compile(fn_inv_sub)
+        opt_fn_inv_sub = torch.compile(torch.ops.aten.sub)
         def wrapper_fn_sub(*args, **kwargs):
             a, b = args
             with torch._C._SetExcludeDispatchKeyGuard(torch._C.DispatchKey.Python, False):
