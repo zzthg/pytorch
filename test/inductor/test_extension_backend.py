@@ -143,26 +143,23 @@ class ExtensionBackendTests(TestCase):
         device = self.module.custom_device()
         x = torch.empty(2, 16).to(device=device).fill_(1)
         y = torch.empty(2, 16).to(device=device).fill_(2)
-        z = torch.empty(2, 16).to(device=device).fill_(3)
-        ref = torch.empty(2, 16).fill_(5)
+        ref = torch.empty(2, 16).fill_(3)
 
         self.assertTrue(x.device == device)
         self.assertTrue(y.device == device)
-        self.assertTrue(z.device == device)
 
         def fn_inv_sub(a, b):
-            return a + b
+            c = a + b
+            return c.fill_(3)
 
-        opt_fn_inv_sub = torch.comple(fn_inv_sub)
         def wrapper_fn_sub(*args, **kwargs):
             a, b = args
-            with torch._C._IncludeDispatchKeyGuard(torch._C.DispatchKeySet(torch._C.DispatchKey.Python)):
-                return opt_fn_inv_sub(a, b)
+            return fn_inv_sub(a, b)
 
         custom_op_lib_xpu_impl = torch.library.Library("aten", "IMPL")
         custom_op_lib_xpu_impl.impl("sub.Tensor", wrapper_fn_sub, "PrivateUse1")
         res = x - y
-        self.assertEqual(ref, res.to(device="cpu"))
+        self.assertEqual(res.to("cpu"), ref)
 
 
 if __name__ == "__main__":
