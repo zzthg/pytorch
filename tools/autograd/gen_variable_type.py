@@ -477,10 +477,7 @@ if (${tensor_name}_impl_saved && !at::impl::dispatch_mode_enabled() && !at::impl
 ENFORCE_TENSOR_IMPL_USE_COUNT_LT_OR_EQ_ONE = CodeTemplate(
     """\
 if (!at::impl::dispatch_mode_enabled() && !at::impl::tensor_has_dispatch(${tensor_name})) {
-  if (${tensor_name}.has_storage() && ${tensor_name}.unsafeGetTensorImpl()->pyobj_slot() != nullptr) {
-  } else {
-    TORCH_INTERNAL_ASSERT(${tensor_name}.use_count() <= 1, "function: ${fn_name}");
-  }
+  TORCH_INTERNAL_ASSERT(${tensor_name}.use_count() <= 1, "function: ${fn_name}");
 }
 """
 )
@@ -488,11 +485,7 @@ if (!at::impl::dispatch_mode_enabled() && !at::impl::tensor_has_dispatch(${tenso
 ENFORCE_TENSOR_STORAGE_USE_COUNT_EQUALS_ONE = CodeTemplate(
     """\
 if (${tensor_name}.has_storage() && !at::impl::dispatch_mode_enabled() && !at::impl::tensor_has_dispatch(${tensor_name})) {
-  if (${tensor_name}.unsafeGetTensorImpl()->pyobj_slot() != nullptr) {
-    TORCH_INTERNAL_ASSERT(${tensor_name}.storage().use_count() >= 1, "function: ${fn_name}");
-  } else {
-    TORCH_INTERNAL_ASSERT(${tensor_name}.storage().use_count() == 1, "function: ${fn_name}");
-  }
+  TORCH_INTERNAL_ASSERT(${tensor_name}.storage().use_count() == 1, "function: ${fn_name}");
 }
 """
 )
