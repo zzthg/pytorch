@@ -35,7 +35,6 @@ class EagerCompileRegistry:
             if op._overloadname != "default"
             else op.__name__[: -len(".default")]
         )
-        print(f"register {name}")
         lib = self.libraries.get(op.namespace, None)
         if lib is None:
             lib = torch.library.Library(op.namespace, "IMPL", dispatch_key)
@@ -48,10 +47,12 @@ class AotCache:
         self.cache = {}
 
     def lookup(self, op, *args, **kwargs):
+        # TODO: Devise a way to map inputs to the right AOT compiled binary
         return self.cache.get(op.name(), None)
 
     def add(self, op, *args, **kwargs):
         def load(device, so_path):
+            # code copied from test_aot_inductor.py
             module = torch.utils.cpp_extension.load_inline(
                 name="aot_inductor",
                 cpp_sources=[aot_inductor_launcher(so_path, device)],
@@ -77,7 +78,7 @@ class AotCache:
             so_path = torch._export.aot_compile(op, args, kwargs)
             # TODO: support other devices than cpu
             self.cache[op.name()] = load("cpu", so_path)
-            return self.cache[op.name()]
+        return self.cache[op.name()]
 
 
 registry = EagerCompileRegistry()
@@ -87,6 +88,21 @@ aot_cache = AotCache()
 def register_eager_compile_for_fn(
     dispatch_key, fn, args=(), kwargs=None, ignore_op_fn=None
 ):
+    """
+    Trace the function `fn` to collect all the aten ops it calls and
+    register them to the eager compile registry. AOT compile these ops
+    and put into the `AotCache`.
+
+    Example::
+    
+        def fn(x, y):
+            return x + y
+
+        x = torch.randn(10, 10)
+        y = torch.randn(10, 10)
+        register_eager_compile_for_fn("CPU", fn, (x, y))
+        z = fn(x, y)
+    """
     @dataclasses.dataclass
     class Record:
         op: torch._ops.OpOverload
