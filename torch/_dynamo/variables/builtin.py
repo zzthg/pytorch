@@ -348,15 +348,15 @@ class BuiltinVariable(VariableTracker):
         ]
         op_handlers[operator.add].extend(list_like_addition_handlers)
 
-        def list_iadd_handler(tx, a, b, _):
-            if not a.mutable_local or not b.has_unpack_var_sequence(tx):
+        def list_iadd_handler(tx, arg, b, _):
+            if not arg.mutable_local or not b.has_unpack_var_sequence(tx):
                 # Handler doesn't apply
                 return None
 
             seq = b.unpack_var_sequence(tx)
-            tx.output.side_effects.mutation(a)
-            a.items.extend(seq)
-            return a
+            tx.output.side_effects.mutation(arg)
+            arg.items.extend(seq)
+            return arg
 
         list_like_iadd_handlers = [
             (

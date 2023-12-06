@@ -65,16 +65,22 @@ class PyCodegen:
 
     def __call__(self, value, allow_cache=True):
         """Generate code such that top-of-stack (TOS) is set to value"""
+        print(value)
+        if hasattr(value, "source"):
+            print(value.source)
+
         if isinstance(value, Source):
             self._output.extend(value.reconstruct(self))
             self.clear_tos()
+            print("Used source")
             return
 
         assert isinstance(value, VariableTracker)
         output = self._output
         graph_outputs = self.graph_outputs
 
-        if self.top_of_stack is value:
+        if self.top_of_stack is value and allow_cache:
+            print("Dup top")
             output.append(create_dup_top())
             return
 
@@ -82,17 +88,21 @@ class PyCodegen:
             if value.mutable_local and value.mutable_local in self.tempvars:
                 output.append(self.create_load(self.tempvars[value.mutable_local]))
                 self.top_of_stack = value
+                print("Used cache mutable local")
                 return
             if self.tempvars.get(value) is not None:
                 output.append(self.create_load(self.tempvars[value]))
                 self.top_of_stack = value
+                print("Used cache var")
                 return
 
         if value.source is not None and allow_cache:
+            print("Used source reconstruct")
             output.extend(value.source.reconstruct(self))
         elif value.is_python_constant() and is_safe_constant(
             value.as_python_constant()
         ):
+            print("Used constant")
             output.append(self.create_load_const(value.as_python_constant()))
         elif isinstance(value, TensorWithTFOverrideVariable):
             graph_outputs_key = self.add_graph_output(value)
@@ -136,12 +146,14 @@ class PyCodegen:
             for part in parts:
                 output.append(self.create_load_attr(part))
         else:
+            print("Incrementing uses")
             self.uses[value] += 1
             try:
                 output.extend(value.reconstruct(self))
             except NotImplementedError:
                 unimplemented(f"reconstruct: {value}")
             if allow_cache and value in self.tempvars:
+                print("Added to cache")
                 self._output.append(create_dup_top())
                 self.add_cache(value)
 

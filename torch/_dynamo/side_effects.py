@@ -356,6 +356,8 @@ class SideEffects:
             elif var in cg.tempvars:
                 assert cg.tempvars.get(var) is None
                 # subsequent usage should point to the original variable
+                print("MUTABLE_LOCAL")
+                print(var.mutable_local.source)
                 cg(var.mutable_local.source)
                 cg.add_cache(var)
 

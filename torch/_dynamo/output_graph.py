@@ -919,7 +919,8 @@ class OutputGraph(Checkpointable[OutputGraphState]):
             self.side_effects.codegen_save_tempvars(pass1)
             pass1.foreach(stack_values)
             self.side_effects.codegen_update_mutated(pass1)
-
+            # print("VARIABLE_USES")
+            # print(pass1.uses)
             # one more time now that we have established tempvars
             pass2 = PyCodegen(
                 tx,

@@ -817,6 +817,9 @@ class VariableBuilder:
         # have a stricter match.
         self.install_guards(GuardBuilder.LIST_LENGTH)
 
+        print("-----")
+        print([type(item) for item in value])
+        print("-----")
         for item in value:
             if item is value:
                 unimplemented("list elements are pointing to the list itself")
