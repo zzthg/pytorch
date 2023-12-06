@@ -566,6 +566,48 @@ static PyObject* THPVariable_view_func_unsafe(PyObject* self_, PyObject* arg) {
   return view_func_impl(self_, arg, /*check_has_same_meta=*/false);
 }
 
+static PyObject* THPVariable_tensor_impl(PyObject* self_, PyObject* noargs) {
+  HANDLE_TH_ERRORS
+  const at::Tensor& self = THPVariable_Unpack(self_);
+  return THPUtils_packInt64((int64_t)(self.unsafeGetTensorImpl()));
+  END_HANDLE_TH_ERRORS
+}
+
+static PyObject* THPVariable_tensor_impl_pyobj_slot(PyObject* self_, PyObject* noargs) {
+  HANDLE_TH_ERRORS
+  const at::Tensor& self = THPVariable_Unpack(self_);
+  return THPUtils_packInt64((int64_t)(self.unsafeGetTensorImpl()->pyobj_slot()));
+  END_HANDLE_TH_ERRORS
+}
+
+static PyObject* THPVariable_tensor_python_interpreter(PyObject* self_, PyObject* noargs) {
+  HANDLE_TH_ERRORS
+  const at::Tensor& self = THPVariable_Unpack(self_);
+  return THPUtils_packInt64((int64_t)(self.unsafeGetTensorImpl()->pyobj_slot()->pyobj_interpreter()));
+  END_HANDLE_TH_ERRORS
+}
+
+static PyObject* THPVariable_storage_impl(PyObject* self_, PyObject* noargs) {
+  HANDLE_TH_ERRORS
+  const at::Tensor& self = THPVariable_Unpack(self_);
+  return THPUtils_packInt64((int64_t)(self.storage().unsafeGetStorageImpl()));
+  END_HANDLE_TH_ERRORS
+}
+
+static PyObject* THPVariable_storage_impl_pyobj_slot(PyObject* self_, PyObject* noargs) {
+  HANDLE_TH_ERRORS
+  const at::Tensor& self = THPVariable_Unpack(self_);
+  return THPUtils_packInt64((int64_t)(self.storage().unsafeGetStorageImpl()->pyobj_slot()));
+  END_HANDLE_TH_ERRORS
+}
+
+static PyObject* THPVariable_storage_python_interpreter(PyObject* self_, PyObject* noargs) {
+  HANDLE_TH_ERRORS
+  const at::Tensor& self = THPVariable_Unpack(self_);
+  return THPUtils_packInt64((int64_t)(self.storage().unsafeGetStorageImpl()->pyobj_slot()->pyobj_interpreter()));
+  END_HANDLE_TH_ERRORS
+}
+
 // Instantiates a subclass of self with the same data.
 static PyObject* THPVariable_as_subclass(
     PyObject* _self,
@@ -1646,6 +1688,14 @@ static PyMethodDef extra_methods[] = {
     {"_fix_weakref", THPVariable_fix_weakref, METH_NOARGS, nullptr},
     {"_view_func", THPVariable_view_func, METH_O, nullptr},
     {"_view_func_unsafe", THPVariable_view_func_unsafe, METH_O, nullptr},
+
+    // Debugging purpose
+    {"_tensor_impl", THPVariable_tensor_impl, METH_NOARGS, nullptr},
+    {"_tensor_python_interpreter", THPVariable_tensor_python_interpreter, METH_NOARGS, nullptr},
+    {"_tensor_impl_pyobj_slot", THPVariable_tensor_impl_pyobj_slot, METH_NOARGS, nullptr},
+    {"_storage_impl", THPVariable_storage_impl, METH_NOARGS, nullptr},
+    {"_storage_pyobj_slot", THPVariable_storage_impl_pyobj_slot, METH_NOARGS, nullptr},
+    {"_storage_python_interpreter", THPVariable_storage_python_interpreter, METH_NOARGS, nullptr},
     {nullptr}};
 
 struct THPVariableMeta {

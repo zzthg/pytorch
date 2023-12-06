@@ -651,6 +651,11 @@ PyObject* THPStorage_isShared(PyObject* self, PyObject* noargs) {
   }
 }
 
+PyObject* THPStorage_pyobj_slot(PyObject* self, PyObject* noargs) {
+  const auto& storage = THPStorage_Unpack(self);
+  return THPUtils_packInt64(int64_t(storage.unsafeGetStorageImpl()->pyobj_slot()));
+}
+
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays,cppcoreguidelines-avoid-non-const-global-variables)
 static PyMethodDef THPStorage_sharingMethods[] = {
     {"_new_with_weak_ptr",
@@ -691,6 +696,7 @@ static PyMethodDef THPStorage_sharingMethods[] = {
     {"_shared_incref", THPStorage_sharedIncref, METH_NOARGS, nullptr},
     {"_get_shared_fd", THPStorage_sharedFd, METH_NOARGS, nullptr},
     {"is_shared", THPStorage_isShared, METH_NOARGS, nullptr},
+    {"_pyobj_slot", THPStorage_pyobj_slot, METH_NOARGS, nullptr},
     {nullptr}};
 
 PyMethodDef* THPStorage_getSharingMethods() {

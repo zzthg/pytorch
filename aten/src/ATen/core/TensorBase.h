@@ -120,6 +120,9 @@ class TORCH_API TensorBase {
   int64_t storage_offset() const {
     return impl_->storage_offset();
   }
+  int64_t pyobj_slot_ptr() const {
+    return (int64_t)(impl_->pyobj_slot());
+  }
 
   TensorBase contiguous(MemoryFormat memory_format=MemoryFormat::Contiguous) const {
     if (is_contiguous(memory_format)) {
