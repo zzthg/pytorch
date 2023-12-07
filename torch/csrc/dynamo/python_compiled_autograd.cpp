@@ -223,6 +223,9 @@ struct InputBuffers : public std::unordered_map<Node*, InputBuffer> {
 static PyObject* the_autograd_compiler = nullptr;
 static PyObject* set_autograd_compiler(PyObject* dummy, PyObject* args);
 
+static PyObject* _is_eager_compile = Py_False;
+static PyObject* set_eager_compile(PyObject* dummy, PyObject* args);
+
 static PyObject* clear_cache(PyObject* dummy, PyObject* args) {
   HANDLE_TH_ERRORS;
   CacheNode::root()->clear();
@@ -241,6 +244,7 @@ static PyObject* is_cache_empty(PyObject* dummy, PyObject* args) {
 
 static PyMethodDef _methods[] = {
     {"set_autograd_compiler", set_autograd_compiler, METH_VARARGS, nullptr},
+    {"set_eager_compile", set_eager_compile, METH_VARARGS, nullptr},
     {"clear_cache", clear_cache, METH_NOARGS, nullptr},
     {"is_cache_empty", is_cache_empty, METH_NOARGS, nullptr},
     {nullptr, nullptr, 0, nullptr}};
@@ -508,8 +512,34 @@ static PyObject* set_autograd_compiler(PyObject* dummy, PyObject* args) {
   END_HANDLE_TH_ERRORS;
 }
 
+static PyObject* set_eager_compile(PyObject* dummy, PyObject* args) {
+  HANDLE_TH_ERRORS;
+  PyObject* obj;
+  if (!PyArg_ParseTuple(args, "O", &obj)) {
+    return nullptr;
+  }
+
+  PyObject* prior = _is_eager_compile;
+  if (PyObject_IsTrue(obj)) {
+    _is_eager_compile = Py_True;
+  } else {
+    _is_eager_compile = Py_False;
+  }
+
+  if (prior == nullptr) {
+    Py_RETURN_NONE;
+  } else {
+    return prior;
+  }
+  END_HANDLE_TH_ERRORS;
+}
+
 PyObject* torch_c_dynamo_compiled_autograd_init() {
   return PyModule_Create(&_module);
+}
+
+bool is_eager_compile() {
+  return _is_eager_compile == Py_True;
 }
 
 } // namespace torch::dynamo::autograd
