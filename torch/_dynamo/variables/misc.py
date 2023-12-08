@@ -370,7 +370,10 @@ class AutogradFunctionVariable(VariableTracker):
             if jvp_fn is not torch.autograd.Function.jvp:
                 unimplemented("NYI - User defind jvp")
 
-            from .higher_order_ops import TorchHigherOrderOperatorVariable
+            from .higher_order_ops import (
+                AutogradFunctionApplyVariable,
+                TorchHigherOrderOperatorVariable,
+            )
 
             trampoline_autograd_apply = produce_trampoline_autograd_apply(self.fn_cls)
             trampoline_autograd_fwd = produce_trampoline_autograd_fwd(self.fn_cls)
@@ -423,10 +426,12 @@ class AutogradFunctionVariable(VariableTracker):
 
             # If fwd and backward are sound, we want apply in the graph.
             # We don't want backward because we are tracing forwards.
-            args = args[1:]
-            return TorchHigherOrderOperatorVariable.make(
-                trampoline_autograd_apply,
-                fwd_bwd_tracer=None,
+            # And we don't want backwards for the obvious reasons.
+            args = args[1:]  # Drop context
+            return AutogradFunctionApplyVariable(
+                trampoline_autograd_fwd,
+                trampoline_autograd_bwd,
+                source=module_source,
             ).call_function(tx, args, kwargs)
 
         if self.source:
