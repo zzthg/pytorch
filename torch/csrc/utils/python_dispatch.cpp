@@ -77,7 +77,7 @@ inline torch::CppFunction dispatch_str(const char* key, Func&& raw_f) {
 }
 
 struct EnableHermeticPyObject {
-  EnableHermeticPyObject(bool bypass = false)
+  EnableHermeticPyObject(bool bypass = true)
       : bypass_(bypass),
         old_(c10::impl::HermeticPyObjectTLS::get_state()),
         old_excluded_python_(
@@ -86,24 +86,26 @@ struct EnableHermeticPyObject {
             c10::impl::tls_is_dispatch_key_included(at::DispatchKey::Python)),
         old_python_snapshot_(c10::impl::tls_is_dispatch_key_included(
             at::DispatchKey::PythonTLSSnapshot)) {
-    if (bypass_) return;
-
-    c10::impl::HermeticPyObjectTLS::set_state(true);
-    c10::impl::tls_set_dispatch_key_excluded(at::DispatchKey::Python, true);
-    c10::impl::tls_set_dispatch_key_included(at::DispatchKey::Python, false);
-    c10::impl::tls_set_dispatch_key_included(
-        at::DispatchKey::PythonTLSSnapshot, false);
+    if (bypass_) {
+    } else {
+      c10::impl::HermeticPyObjectTLS::set_state(true);
+      c10::impl::tls_set_dispatch_key_excluded(at::DispatchKey::Python, true);
+      c10::impl::tls_set_dispatch_key_included(at::DispatchKey::Python, false);
+      c10::impl::tls_set_dispatch_key_included(
+          at::DispatchKey::PythonTLSSnapshot, false);
+    }
   }
   ~EnableHermeticPyObject() {
-    if (bypass_) return;
-
-    c10::impl::HermeticPyObjectTLS::set_state(old_);
-    c10::impl::tls_set_dispatch_key_excluded(
-        at::DispatchKey::Python, old_excluded_python_);
-    c10::impl::tls_set_dispatch_key_included(
-        at::DispatchKey::Python, old_python_);
-    c10::impl::tls_set_dispatch_key_included(
-        at::DispatchKey::PythonTLSSnapshot, old_python_snapshot_);
+    if (bypass_) {
+    } else {
+      c10::impl::HermeticPyObjectTLS::set_state(old_);
+      c10::impl::tls_set_dispatch_key_excluded(
+          at::DispatchKey::Python, old_excluded_python_);
+      c10::impl::tls_set_dispatch_key_included(
+          at::DispatchKey::Python, old_python_);
+      c10::impl::tls_set_dispatch_key_included(
+          at::DispatchKey::PythonTLSSnapshot, old_python_snapshot_);
+    }
   }
   bool bypass_;
   bool old_;
@@ -178,7 +180,7 @@ class PythonKernelHolder : public c10::OperatorKernel {
 
     auto arguments = torch::jit::pop(*stack, op.schema().arguments().size());
     py::gil_scoped_acquire g;
-    EnableHermeticPyObject g2(torch::dynamo::autograd::is_eager_compile());
+    EnableHermeticPyObject g2;
     auto args_kwargs = parseIValuesToPyArgsKwargs(op, arguments);
     auto obj = py::reinterpret_steal<py::object>(PyObject_Call(
         func_.ptr(getPyInterpreter()),
