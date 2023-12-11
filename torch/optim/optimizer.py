@@ -56,8 +56,10 @@ required = _RequiredParameter()
 
 def _use_grad_for_differentiable(func):
     def _use_grad(self, *args, **kwargs):
+        print("_use_grad is getting called for", func, "on ", self.__class__.__name__)
         import torch._dynamo
         prev_grad = torch.is_grad_enabled()
+        print("is grad originally enabled?", prev_grad)
         try:
             # Note on graph break below:
             # we need to graph break to ensure that aot respects the no_grad annotation.
@@ -72,11 +74,13 @@ def _use_grad_for_differentiable(func):
             # graph break to allow the fully fused fwd-bwd-optimizer graph to be compiled.
             # see https://github.com/pytorch/pytorch/issues/104053
             torch.set_grad_enabled(self.defaults['differentiable'])
+            print("started, is_grad_enabled?", torch.is_grad_enabled())
             torch._dynamo.graph_break()
             ret = func(self, *args, **kwargs)
         finally:
             torch._dynamo.graph_break()
             torch.set_grad_enabled(prev_grad)
+            print("done, is_grad_enabled?", torch.is_grad_enabled())
         return ret
     functools.update_wrapper(_use_grad, func)
     return _use_grad
@@ -361,8 +365,11 @@ class Optimizer:
 
         @functools.wraps(func)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> R:
+            print("profile wrapper is happening")
             self, *_ = args
             self = cast(Optimizer, self)
+            # print(self.step)
+            # breakpoint()
             profile_name = f"Optimizer.step#{self.__class__.__name__}.step"
             with torch.autograd.profiler.record_function(profile_name):
                 # call optimizer step pre hooks

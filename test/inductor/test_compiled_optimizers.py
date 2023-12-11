@@ -34,6 +34,7 @@ except (unittest.SkipTest, ImportError) as e:
 def compile_opt(opt_compiled, closure=None):
     # run the patcher so that step has the expected structure
     torch._dynamo.eval_frame.TorchPatcher.patch()
+    print(opt_compiled.step.__dict__)
 
     # unwrap step to avoid a deliberate graph break due to
     # a limitation of functionalization/no_grad detection
@@ -41,9 +42,6 @@ def compile_opt(opt_compiled, closure=None):
     # This ignores the outer _use_grad_if_differentiable wrapper
     # and instead manually disables grad before calling step, which is fine
     # for now as dynamo does not support differentiable optimizers anyway
-    if not hasattr(opt_compiled.step, "__wrapped__"):
-        return torch.compile(lambda : opt_compiled.step, backend="inductor", fullgraph=True)
-
     step_fn = opt_compiled.step.__wrapped__
     if closure is not None:
 
@@ -127,6 +125,8 @@ def make_recompile_test(optim_cls, closure=None, kernel_count=2, **kwargs):
 
             compiled_step()
 
+        print(kernel_count)
+        print(torch._inductor.metrics.generated_kernel_count)
         if self.check_kernel_count:
             # currently, we compile the step and the rest of the computation
             # separately because the step is a single element tensor
