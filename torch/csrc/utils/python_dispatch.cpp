@@ -117,11 +117,13 @@ struct EnableHermeticPyObject {
 class PythonKernelHolder : public c10::OperatorKernel {
   c10::SafePyObject func_;
   c10::DispatchKey dispatch_key_;
+  bool is_compile_;
 
  public:
-  PythonKernelHolder(py::object func, c10::DispatchKey dispatch_key)
+  PythonKernelHolder(py::object func, c10::DispatchKey dispatch_key, bool is_compile = false)
       : func_(func.release().ptr(), getPyInterpreter()),
-        dispatch_key_(dispatch_key) {}
+        dispatch_key_(dispatch_key),
+        is_compile_(is_compile) {}
 
   void operator()(
       const c10::OperatorHandle& op,
@@ -180,7 +182,11 @@ class PythonKernelHolder : public c10::OperatorKernel {
 
     auto arguments = torch::jit::pop(*stack, op.schema().arguments().size());
     py::gil_scoped_acquire g;
-    EnableHermeticPyObject g2;
+    const char* _eager_compile = std::getenv("TORCH_EAGER_COMPILE");
+    if (_eager_compile != nullptr) {
+      is_compile_ = std::atoi(_eager_compile) == 0 ? false : true;
+    }
+    EnableHermeticPyObject g2(is_compile_);
     auto args_kwargs = parseIValuesToPyArgsKwargs(op, arguments);
     auto obj = py::reinterpret_steal<py::object>(PyObject_Call(
         func_.ptr(getPyInterpreter()),
@@ -367,6 +373,33 @@ void initDispatchBindings(PyObject* module) {
                   std::make_shared<c10::SafePyObject>(
                       func.release().ptr(), getPyInterpreter()));
             }
+            END_HANDLE_TH_ERRORS_PYBIND
+          },
+          "",
+          py::arg("name"),
+          py::arg("dispatch"),
+          py::arg("func"))
+      .def(
+          "impl_compile",
+          [](const py::object& self,
+             const char* name,
+             // TODO: empty string no longer works
+             c10::DispatchKey dispatch,
+             py::object func) {
+            HANDLE_TH_ERRORS
+            auto& lib = self.cast<torch::Library&>();
+            lib.impl(
+                name,
+                torch::dispatch(
+                    dispatch,
+                    CppFunction::makeFromBoxedFunctor(
+                        std::make_unique<PythonKernelHolder>(
+                            func, dispatch, true))),
+                register_or_verify());
+            python_registrations_[lib._resolve(name)].insert_or_assign(
+                dispatch,
+                std::make_shared<c10::SafePyObject>(
+                    func.release().ptr(), getPyInterpreter()));
             END_HANDLE_TH_ERRORS_PYBIND
           },
           "",

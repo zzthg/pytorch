@@ -1,5 +1,5 @@
 from ._ops import OpOverload
-from typing import Any, Optional, Set, List
+from typing import Any, Callable, Optional, Set, List
 import traceback
 import torch
 import weakref
@@ -110,6 +110,12 @@ class Library:
         return result
 
     def impl(self, op_name, fn, dispatch_key=''):
+        self._impl_fn(op_name, fn, dispatch_key, "impl")
+
+    def impl_compile(self, op_name, fn, dispatch_key=''):
+        self._impl_fn(op_name, fn, dispatch_key, "impl_compile")
+
+    def _impl_fn(self, op_name, fn, dispatch_key='', impl_method="impl"):
         r'''Registers the function implementation for an operator defined in the library.
 
         Args:
@@ -165,7 +171,10 @@ class Library:
                     " for the base ops that it decomposes into.")
 
         assert self.m is not None
-        self.m.impl(name, dispatch_key if dispatch_key != "" else "CompositeImplicitAutograd", fn)
+        assert hasattr(self.m, impl_method)
+        impl_method_fn = getattr(self.m, impl_method)
+        assert isinstance(impl_method_fn, Callable)
+        impl_method_fn(name, dispatch_key if dispatch_key != "" else "CompositeImplicitAutograd", fn)
 
         _impls.add(key)
         self._op_impls.add(key)
