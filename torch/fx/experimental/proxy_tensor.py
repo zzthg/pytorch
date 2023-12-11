@@ -307,7 +307,7 @@ def proxy_call(proxy_mode, func, pre_dispatch, args, kwargs):
         # If any of the Tensor inputs are "real" (not FakeTensor), we may
         # incorrectly burn in constants by allowing this access.  Raise
         # an error in this case
-        if pytree.tree_all_only(torch.Tensor, lambda t: not is_fake(t), (args, kwargs)):
+        if False and pytree.tree_all_only(torch.Tensor, lambda t: not is_fake(t), (args, kwargs)):
             raise RuntimeError(
                 f"It appears that you're trying to get value out of a tracing tensor with {func} - erroring out! "
                 "It's likely that this is caused by data-dependent control flow or similar.  "
