@@ -281,11 +281,51 @@ class TestE2ELoadAndSave(DTensorTestBase, VerifyStateDictMixin):
     @with_temp_dir
     @skip_if_lt_x_gpu(4)
     def test_deadlock(self):
-        """Tests that the order of keys in the state dict does not matter when loading
-        If order was not accounted for, the following test would cause a deadlock.
-        """
-
         from concurrent.futures import ThreadPoolExecutor
+
+        def foo():
+            # the first collective we hit in `checkpoint.save` is `gather_object`, so testing here
+            gather_objects = ["foo", 12, {1: 2}, {2:3}]
+            output = [None for _ in gather_objects]
+            dist.gather_object(
+                gather_objects[dist.get_rank()],
+                output if dist.get_rank() == 0 else None
+            )
+            return output
+
+        executor = ThreadPoolExecutor(max_workers=1)
+        f = executor.submit(foo)
+
+        print(f.result())
+
+    def test_pg_init(self):
+        # same as above but we init pg and use env instead of the temp file
+
+        import os
+        import tempfile
+        from concurrent.futures import ThreadPoolExecutor
+
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = "12355"
+
+        # backend = "cpu:gloo,cuda:nccl" # no deadlock
+        backend = "nccl" # raises exception for Duplicate GPU if default init_method, deadlocks on file
+        # backend = "gloo" # no deadlock
+
+        # init_file = None
+        init_file = tempfile.NamedTemporaryFile(delete=False)
+        init_file = f"file://{init_file.name}"
+        init_file = None
+
+        dist.init_process_group(
+            backend=backend,
+            rank=self.rank,
+            world_size=4,
+            init_method=init_file
+        )
+
+        if "nccl" in backend:
+            torch.cuda.set_device(self.rank)
 
         def foo():
             gather_objects = ["foo", 12, {1: 2}, {2:3}]
