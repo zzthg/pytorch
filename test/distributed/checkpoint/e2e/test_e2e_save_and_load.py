@@ -91,7 +91,7 @@ def _train(model, optim, train_steps=1):
 
 
 class TestE2ELoadAndSave(DTensorTestBase, VerifyStateDictMixin):
-    def _create_model(self, compile, model_type):
+    def _create_model(self, compile, model_type, options):
         dummy_model = TestDummyModel().cuda()
 
         assert model_type in ModelType, f"{model_type} is not supported."
@@ -132,8 +132,8 @@ class TestE2ELoadAndSave(DTensorTestBase, VerifyStateDictMixin):
 
         optim = self._optim(model)
         if model_type is not ModelType.NONE:
-            _patch_model_state_dict(model)
-            _patch_optimizer_state_dict(model, optimizers=optim)
+            _patch_model_state_dict(model, options=options)
+            _patch_optimizer_state_dict(model, optimizers=optim, options=options)
 
         return model, optim
 
@@ -241,6 +241,69 @@ class TestE2ELoadAndSave(DTensorTestBase, VerifyStateDictMixin):
 
         DCP.save(sd, DCP.FileSystemWriter(self.temp_dir))
         DCP.load(sd, DCP.FileSystemReader(self.temp_dir))
+
+    # uncomment to remove deadlock
+    # @property
+    # def backend(self):
+    #     return "cpu:gloo,cuda:nccl"
+
+    @with_comms
+    @with_temp_dir
+    @skip_if_lt_x_gpu(4)
+    def test_async(self):
+        """Tests that the order of keys in the state dict does not matter when loading
+        If order was not accounted for, the following test would cause a deadlock.
+        """
+
+        from torch.distributed.checkpoint.state_dict import get_model_state_dict
+        from torch.distributed.checkpoint.state_dict import StateDictOptions
+        from concurrent.futures import ThreadPoolExecutor
+
+        model = TestDummyModel().cuda()
+        device_mesh = init_device_mesh(self.device_type, (self.world_size,))
+        model = FSDP(
+            model,
+            device_mesh=device_mesh,
+            use_orig_params=True,
+        )
+        msd = get_model_state_dict(model, options=StateDictOptions(cpu_offload=True))
+
+        sd = {"model": msd}
+        checkpointer = DCP.FileSystemCheckpointer(self.temp_dir)
+
+        executor = ThreadPoolExecutor(max_workers=1)
+        f = executor.submit(checkpointer.save, state_dict=sd)
+
+        print(f.result())
+
+
+    @with_comms
+    @with_temp_dir
+    @skip_if_lt_x_gpu(4)
+    def test_deadlock(self):
+        """Tests that the order of keys in the state dict does not matter when loading
+        If order was not accounted for, the following test would cause a deadlock.
+        """
+
+        from concurrent.futures import ThreadPoolExecutor
+
+        def foo():
+            gather_objects = ["foo", 12, {1: 2}, {2:3}]
+            output = [None for _ in gather_objects]
+            dist.gather_object(
+                gather_objects[dist.get_rank()],
+                output if dist.get_rank() == 0 else None
+            )
+            return output
+
+        executor = ThreadPoolExecutor(max_workers=1)
+        f = executor.submit(foo)
+
+        print(f.result())
+
+
+
+
 
 
 instantiate_parametrized_tests(TestE2ELoadAndSave)
