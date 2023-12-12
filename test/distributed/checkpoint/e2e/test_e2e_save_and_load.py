@@ -312,10 +312,10 @@ class TestE2ELoadAndSave(DTensorTestBase, VerifyStateDictMixin):
         backend = "nccl" # raises exception for Duplicate GPU if default init_method, deadlocks on file
         # backend = "gloo" # no deadlock
 
-        # init_file = None
-        init_file = tempfile.NamedTemporaryFile(delete=False)
-        init_file = f"file://{init_file.name}"
         init_file = None
+        # uncomment to cause a deadlock if backend == nccl
+        # init_file = tempfile.NamedTemporaryFile(delete=False)
+        # init_file = f"file://{init_file.name}"
 
         dist.init_process_group(
             backend=backend,
@@ -336,10 +336,19 @@ class TestE2ELoadAndSave(DTensorTestBase, VerifyStateDictMixin):
             )
             return output
 
+        # works
+        print("running sync")
+        foo()
+        print("done running sync")
+
+        # does not work for backend == nccl
+        # (which is probably expected but the deadlock when using a file as init method is a potentially an issue)
+        print("running async")
         executor = ThreadPoolExecutor(max_workers=1)
         f = executor.submit(foo)
 
         print(f.result())
+        print("done running async")
 
 
 
