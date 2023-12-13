@@ -651,7 +651,7 @@ class AutogradFunctionApply(HigherOrderOperator):
 
             @staticmethod
             def backward(ctx, grad):
-                return bwd(ctx, grad)
+                return bwd(None, 0, *ctx.saved_tensors, grad)
 
         return ApplyTemplate.apply(*fwd_args)
 

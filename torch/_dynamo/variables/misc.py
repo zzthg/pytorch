@@ -307,8 +307,17 @@ def produce_trampoline_autograd_fwd(fn_cls):
 
 
 def produce_trampoline_autograd_bwd(fn_cls):
-    def trampoline_autograd_bwd(*args, **kwargs):
-        return fn_cls.backward(*args, **kwargs)
+    def trampoline_autograd_bwd(ctx, *args, **kwargs):
+        return fn_cls.backward(ctx, *args, **kwargs)
+
+    trampoline_autograd_bwd._origin = produce_trampoline_autograd_bwd
+    return trampoline_autograd_bwd
+
+def produce_trampoline_autograd_bwd2(fn_cls):
+    def trampoline_autograd_bwd(ctx, num_saved_tensors, *args):
+        ctx.saved_tensors = args[:num_saved_tensors]
+        actual_args = args[num_saved_tensors:]
+        return fn_cls.backward(ctx, *actual_args)
 
     trampoline_autograd_bwd._origin = produce_trampoline_autograd_bwd
     return trampoline_autograd_bwd
@@ -378,6 +387,7 @@ class AutogradFunctionVariable(VariableTracker):
             trampoline_autograd_apply = produce_trampoline_autograd_apply(self.fn_cls)
             trampoline_autograd_fwd = produce_trampoline_autograd_fwd(self.fn_cls)
             trampoline_autograd_bwd = produce_trampoline_autograd_bwd(self.fn_cls)
+            trampoline_autograd_bwd2 = produce_trampoline_autograd_bwd2(self.fn_cls)
 
             # NOTE [On Tracing autograd.Function w/ grad]
             # The complex system described here revolves around the soundness evaluation of an autograd.Function in
@@ -431,6 +441,7 @@ class AutogradFunctionVariable(VariableTracker):
             return AutogradFunctionApplyVariable(
                 trampoline_autograd_fwd,
                 trampoline_autograd_bwd,
+                trampoline_autograd_bwd2,
                 source=module_source,
             ).call_function(tx, args, kwargs)
 

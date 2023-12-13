@@ -1449,10 +1449,11 @@ class TraceWrappedHigherOrderOperatorVariable(TorchHigherOrderOperatorVariable):
 
 
 class AutogradFunctionApplyVariable(VariableTracker):
-    def __init__(self, fwd_graph, bwd_graph, **kwargs):
+    def __init__(self, fwd_graph, bwd_graph, bwd_graph2, **kwargs):
         super().__init__(**kwargs)
         self.fwd_graph = fwd_graph
         self.bwd_graph = bwd_graph
+        self.bwd_graph2 = bwd_graph2
 
     def call_function(
         self, tx, args: "List[VariableTracker]", kwargs: "Dict[str, VariableTracker]"
@@ -1487,9 +1488,10 @@ class AutogradFunctionApplyVariable(VariableTracker):
         saved_tensors = (
             list(ctx.saved_tensors.tensors) if ctx.saved_tensors is not None else []
         )
-        saved_attrs = dict(
-            tx.output.side_effects.store_attr_mutations[ctx.mutable_local]
-        )
+        saved_attrs = {}
+        # saved_attrs = dict(
+        #     tx.output.side_effects.store_attr_mutations[ctx.mutable_local]
+        # )
 
         # TODO(oulgen): Ideally, we would not do a linear search for output
         # node but as things currently are there could be nodes after the
@@ -1521,14 +1523,20 @@ class AutogradFunctionApplyVariable(VariableTracker):
 
         fwd_node = make_attr(tx, fwd_name)
 
-        fn = UserFunctionVariable(self.bwd_graph, source=self.source)
+        fn = UserFunctionVariable(self.bwd_graph2, source=self.source)
+        tracer2 = torch._dynamo.output_graph.SubgraphTracer(
+            tx.output,
+            parent=tx.output.current_tracer,
+            source_target="autograd.Function",
+        )
+        from .constant import ConstantVariable
         speculation = autograd_speculate(
             fn,
             self.bwd_graph,
             tx,
-            [ctx, fwd_body],
+            [ctx, ConstantVariable(len(saved_tensors)), *saved_tensors, fwd_body],
             {},
-            tracer=tracer,
+            tracer=tracer2,
         )
         if speculation is None:
             return None
