@@ -809,9 +809,19 @@ void initDispatchBindings(PyObject* module) {
         include_set.has(c10::DispatchKey::FuncTorchDynamicLayerBackMode));
   });
 
-  m.def("_get_singleton_int", [](int64_t data, int64_t coeff) {
-    return c10::SymInt(c10::SymNode(
-        c10::make_intrusive<c10::SingletonSymNodeImpl>(data, coeff)));
+  m.def(
+      "_get_singleton_int",
+      [](int64_t data,
+         int64_t coeff,
+         const at::Tensor& values,
+         int64_t sum_offsets) {
+        return c10::SymInt(
+            c10::SymNode(c10::make_intrusive<c10::SingletonSymNodeImpl>(
+                data, coeff, values, sum_offsets)));
+      });
+
+  m.def("_set_global_singleton_dummy", [](const at::Tensor& dummy) {
+    return at::set_global_singleton_dummy(dummy);
   });
 
   m.def("_get_constant_bool_symnode", [](int64_t data) {

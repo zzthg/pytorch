@@ -8,6 +8,8 @@
 
 namespace c10 {
 
+struct TensorImpl;
+
 class SymNodeImpl;
 using SymNode = c10::intrusive_ptr<SymNodeImpl>;
 
@@ -34,6 +36,9 @@ class C10_API SymNodeImpl : public c10::intrusive_ptr_target {
   virtual bool is_float() {
     TORCH_CHECK(false, "NYI");
   };
+  virtual bool is_singleton() {
+    return false;
+  }
   virtual SymNode add(const SymNode& other) {
     TORCH_CHECK(false, "NYI");
   };
