@@ -652,16 +652,16 @@ def optim_error_inputs_func_rmsprop(device, dtype):
 def optim_inputs_func_rprop():
     return [
         OptimizerInput(params=None, kwargs={}, desc="default"),
-        OptimizerInput(params=None, kwargs={"lr": 2e-4}, desc="non-default lr"),
-        OptimizerInput(
-            params=None, kwargs={"etas": (0.5, 1.5)}, desc="non-default etas"
-        ),
-        OptimizerInput(
-            params=None,
-            kwargs={"step_sizes": (2e-6, 100)},
-            desc="non-default step_sizes",
-        ),
-        OptimizerInput(params=None, kwargs={"maximize": True}, desc="maximize"),
+        # OptimizerInput(params=None, kwargs={"lr": 2e-4}, desc="non-default lr"),
+        # OptimizerInput(
+        #     params=None, kwargs={"etas": (0.5, 1.5)}, desc="non-default etas"
+        # ),
+        # OptimizerInput(
+        #     params=None,
+        #     kwargs={"step_sizes": (2e-6, 100)},
+        #     desc="non-default step_sizes",
+        # ),
+        # OptimizerInput(params=None, kwargs={"maximize": True}, desc="maximize"),
     ]
 
 

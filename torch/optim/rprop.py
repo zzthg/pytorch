@@ -42,9 +42,11 @@ class Rprop(Optimizer):
             group.setdefault("differentiable", False)
 
     def _init_group(self, group, params, grads, prevs, step_sizes):
+        print("_init_group is getting called")
         has_complex = False
         for p in group["params"]:
             if p.grad is None:
+                print("grad was none so I am continuing!")
                 continue
             has_complex |= torch.is_complex(p)
             params.append(p)
@@ -78,6 +80,7 @@ class Rprop(Optimizer):
             step_sizes.append(state["step_size"])
 
             state["step"] += 1
+            print("just incremented RProp step to", state["step"])
         return has_complex
 
     @_use_grad_for_differentiable
