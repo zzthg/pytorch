@@ -310,6 +310,19 @@ def produce_trampoline_autograd_bwd(fn_cls):
     return trampoline_autograd_bwd
 
 
+def produce_trampoline_autograd_bwd_with_saved(fn_cls):
+    def trampoline_autograd_bwd(ctx, num_saved_tensors, *args, **kwargs):
+        saved_tensors = args[:num_saved_tensors]
+        args = args[num_saved_tensors:]
+        ctx.saved_tensors = saved_tensors
+        for name, value in kwargs.items():
+            setattr(ctx, name, value)
+        return fn_cls.backward(ctx, *args)
+
+    trampoline_autograd_bwd._origin = produce_trampoline_autograd_bwd
+    return trampoline_autograd_bwd
+
+
 def produce_trampoline_autograd_apply(fn_cls):
     def trampoline_autograd_apply(*args, **kwargs):
         return fn_cls.apply(*args, **kwargs)
@@ -366,11 +379,17 @@ class AutogradFunctionVariable(VariableTracker):
             if jvp_fn is not torch.autograd.Function.jvp:
                 unimplemented("NYI - User defind jvp")
 
-            from .higher_order_ops import TorchHigherOrderOperatorVariable
+            from .higher_order_ops import (
+                AutogradFunctionApplyVariable,
+                TorchHigherOrderOperatorVariable,
+            )
 
             trampoline_autograd_apply = produce_trampoline_autograd_apply(self.fn_cls)
             trampoline_autograd_fwd = produce_trampoline_autograd_fwd(self.fn_cls)
             trampoline_autograd_bwd = produce_trampoline_autograd_bwd(self.fn_cls)
+            trampoline_autograd_bwd_with_saved = (
+                produce_trampoline_autograd_bwd_with_saved(self.fn_cls)
+            )
 
             # NOTE [On Tracing autograd.Function w/ grad]
             # The complex system described here revolves around the soundness evaluation of an autograd.Function in
@@ -419,10 +438,12 @@ class AutogradFunctionVariable(VariableTracker):
 
             # If fwd and backward are sound, we want apply in the graph.
             # We don't want backward because we are tracing forwards.
-            args = args[1:]
-            return TorchHigherOrderOperatorVariable.make(
-                trampoline_autograd_apply,
-                fwd_bwd_tracer=None,
+            # And we don't want backwards for the obvious reasons.
+            args = args[1:]  # Drop context
+            return AutogradFunctionApplyVariable(
+                trampoline_autograd_fwd,
+                trampoline_autograd_bwd_with_saved,
+                source=module_source,
             ).call_function(tx, args, kwargs)
 
         if self.source:
