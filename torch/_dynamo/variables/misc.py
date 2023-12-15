@@ -442,7 +442,7 @@ class AutogradFunctionVariable(VariableTracker):
             args = args[1:]  # Drop context
             return AutogradFunctionApplyVariable(
                 trampoline_autograd_fwd,
-                trampoline_autograd_bwd_with_saved,
+                trampoline_autograd_bwd,
                 source=module_source,
             ).call_function(tx, args, kwargs)
 
