@@ -250,6 +250,37 @@ class SubclassTests(torch._dynamo.test_case.TestCase):
             res = fn(input)
             self.assertIsInstance(res, LocalSubclass)
 
+    def test_attrs_subclass(self):
+        import types as pytypes
+
+        class LocalSubclass(torch.Tensor):
+            @classmethod
+            def __torch_function__(cls, func, types, args=(), kwargs=None):
+                if kwargs is None:
+                    kwargs = {}
+                # Needed for method access and torch.compile Support
+                is_base_method = (
+                    isinstance(func, pytypes.MethodDescriptorType)
+                    and func.__objclass__ is torch._C.TensorBase
+                )
+                is_base_attr = (
+                    isinstance(func, pytypes.MethodWrapperType)
+                    and func.__name__ == "__get__"
+                    and func.__self__.__objclass__ is torch._C.TensorBase
+                )
+                if is_base_attr or is_base_method:
+                    return super().__torch_function__(func, types, args, kwargs)
+                else:
+                    raise NotImplementedError(func.__name__)
+
+        with torch._dynamo.config.patch("traceable_tensor_subclasses", {LocalSubclass}):
+
+            @torch.compile(backend="eager", fullgraph=True)
+            def fn(x):
+                return x
+
+            fn(torch.ones(2, 2).as_subclass(LocalSubclass))
+
     def test_isinstance_check_subclass(self):
         with torch._dynamo.config.patch("traceable_tensor_subclasses", {DummyNDim}):
 
