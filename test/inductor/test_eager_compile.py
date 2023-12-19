@@ -22,6 +22,8 @@ device = "CUDA"
 dispatch_key = "CUDA"
 namespace_name = "aten"
 
+custom_op_lib_xpu_impl = torch.library.Library("aten", "IMPL")
+
 def make_elementwise(op_name):
     class WrapperFn:
         def __init__(self, op_name) -> None:
@@ -31,11 +33,24 @@ def make_elementwise(op_name):
             global res_call_count
             res_call_count = res_call_count + 1
             with torch._C._SetExcludeDispatchKeyGuard(torch._C.DispatchKey.Python, False):
-                opt_fn = torch.compile(getattr(torch, self.op_name), dynamic=dynamic)
+                opt_fn = torch.compile(getattr(torch, op_name), dynamic=dynamic)
                 res = opt_fn(*args, **kwargs)
                 return res
 
     return WrapperFn(op_name)
+
+def register_ops(op_set):
+    for _op_name in op_set:
+        qualified_op_name = f"{namespace_name}::{_op_name}"
+        _, overload_names = torch._C._jit_get_operation(qualified_op_name)
+        for overload_name in overload_names:
+            _overload_name = overload_name if overload_name else 'default'
+            try:
+                schema = torch._C._get_schema(qualified_op_name, _overload_name)
+                reg_name = f"{schema.name}.{schema.overload_name}"
+                custom_op_lib_xpu_impl.impl_compile(reg_name, make_elementwise(_op_name), dispatch_key)
+            except:
+                continue
 
 def wrapper_fn_layer_norm(
     input: torch.Tensor,
@@ -63,7 +78,6 @@ def wrapper_fn_layer_norm(
 # end = time.time()
 # print(end - beg)
 
-custom_op_lib_xpu_impl = torch.library.Library("aten", "IMPL")
 custom_op_lib_xpu_impl.impl_compile("native_layer_norm", wrapper_fn_layer_norm, dispatch_key)
 
 unary_op_set = [
@@ -153,21 +167,11 @@ binary_op_set = [
   "sub",
 #   "zeta"
 ]
-for binary_op_name in binary_op_set:
-    qualified_op_name = f"{namespace_name}::{binary_op_name}"
-    op, overload_names = torch._C._jit_get_operation(qualified_op_name)
-    for overload_name in overload_names:
-
-        _overload_name = overload_name if overload_name else 'default'
-        try:
-            schema = torch._C._get_schema(qualified_op_name, _overload_name)
-            reg_name = f"{schema.name}.{schema.overload_name}"
-            custom_op_lib_xpu_impl.impl_compile(reg_name, make_elementwise(binary_op_name), dispatch_key)
-        except:
-            continue
-
+register_ops(binary_op_set)
 
 def demo_eager_run():
+    global ref_call_count
+    global res_call_count
     device = torch.device("cuda")
     x = torch.empty(2, 3, 4, 5, device=device).fill_(1)
     y = torch.empty(2, 3, 4, 5, device=device).fill_(2)
@@ -236,3 +240,4 @@ def demon_perf_profiling():
         print(s.getvalue())
 
 demon_perf_profiling()
+# demo_eager_run()
