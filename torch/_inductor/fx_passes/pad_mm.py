@@ -431,32 +431,33 @@ def _pad_mm_init():
             [dim2a(), dim2b()],
             {},
             should_pad_mm,
-        ),
-        (
-            bmm_pattern,
-            bmm_replace,
-            [dim3a(), dim3b()],
-            {},
-            should_pad_bmm,
-        ),
-        (
-            addmm_pattern,
-            addmm_replace,
-            [dim1a(), dim2a(), dim2b()],
-            rep,
-            should_pad_addmm,
-        ),
+        )
+        # ),
+        # (
+        #     bmm_pattern,
+        #     bmm_replace,
+        #     [dim3a(), dim3b()],
+        #     {},
+        #     should_pad_bmm,
+        # ),
+        # (
+        #     addmm_pattern,
+        #     addmm_replace,
+        #     [dim1a(), dim2a(), dim2b()],
+        #     rep,
+        #     should_pad_addmm,
+        # ),
     ]:
         assert isinstance(workaround, dict)  # mypy is unable to infer the type properly
-        register_replacement(
-            pattern,
-            replacement,
-            args,
-            joint_fwd_bwd,
-            patterns,
-            extra_check=extra_check,
-            scalar_workaround=workaround,
-        )
+        # register_replacement(
+        #     pattern,
+        #     replacement,
+        #     args,
+        #     joint_fwd_bwd,
+        #     patterns,
+        #     extra_check=extra_check,
+        #     scalar_workaround=workaround,
+        # )
         register_replacement(
             pattern,
             replacement,

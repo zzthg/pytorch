@@ -19,10 +19,10 @@
 #include <c10/util/flat_hash_map.h>
 #include <pybind11/operators.h>
 #include <pybind11/stl.h>
+#include <torch/csrc/dynamo/python_compiled_autograd.h>
 #include <torch/csrc/jit/python/pybind_utils.h>
 #include <torch/csrc/utils/pybind.h>
 #include <torch/csrc/utils/python_raii.h>
-#include <torch/csrc/dynamo/python_compiled_autograd.h>
 
 #include <iostream>
 #include <utility>
@@ -120,7 +120,10 @@ class PythonKernelHolder : public c10::OperatorKernel {
   bool is_compile_;
 
  public:
-  PythonKernelHolder(py::object func, c10::DispatchKey dispatch_key, bool is_compile = false)
+  PythonKernelHolder(
+      py::object func,
+      c10::DispatchKey dispatch_key,
+      bool is_compile = false)
       : func_(func.release().ptr(), getPyInterpreter()),
         dispatch_key_(dispatch_key),
         is_compile_(is_compile) {}
