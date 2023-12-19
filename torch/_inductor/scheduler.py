@@ -1242,6 +1242,7 @@ class Scheduler:
         # in codegen we only use buf0, never buf1
         self.mutation_renames = {}
 
+        print(len(nodes))
         self.compute_dependencies()
         self.topological_sort_schedule()
         self.dead_node_elimination()

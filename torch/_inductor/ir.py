@@ -2641,7 +2641,7 @@ class NoneLayout(IRNode):
 
 
 class MutationLayout(Layout):
-    def __init__(self, target: IRNode):
+    def __init__(self, target: IRNode, mark_mutated=True):
         super().__init__(
             target.get_device(),
             target.get_dtype(),
@@ -2649,8 +2649,9 @@ class MutationLayout(Layout):
             None,
         )
         self.target = target
-        name = self.get_buffer().get_name()
-        V.graph.mark_buffer_mutated(name)
+        if mark_mutated:
+            name = self.get_buffer().get_name()
+            V.graph.mark_buffer_mutated(name)
 
     @Layout.stride.getter  # type: ignore[attr-defined]
     def stride(self):
@@ -2679,10 +2680,6 @@ class MutationLayout(Layout):
     @classmethod
     def realize_into(cls, src, dst, unsafe_alias=False):
         dst.realize()
-        # NOTE: We must realize users of `dst` before we realize `src`, since
-        # realization order determines scheduling order. Otherwise, src's
-        # mutation would be scheduled before the existing users of dst!
-        V.graph.mark_buffer_mutated(dst.get_name())
 
         if isinstance(src, TensorBox):
             src = src.data
