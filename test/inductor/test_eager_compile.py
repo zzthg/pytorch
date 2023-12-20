@@ -225,14 +225,42 @@ def demon_perf_profiling():
         ps.print_stats()
         print(s.getvalue())
 
-    x = torch.empty(2, 3, 5, 5, device=device).fill_(1)
-    y = torch.empty(2, 3, 5, 5, device=device).fill_(2)
+    a = torch.empty(2, 6, 5, 5, device=device).fill_(1)
+    b = torch.empty(2, 6, 5, 5, device=device).fill_(2)
 
-    print("High Overhead - Re-Compilation")
+    print("Low Overhead - Dynamic dim size")
     print("+" * 100)
     with cProfile.Profile() as pr:
         # Third time run - The overhead is the low
-        x - y
+        a - b
+
+        s = io.StringIO()
+        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps.print_stats()
+        print(s.getvalue())
+
+    a = torch.empty(2, 2, 3, 5, 5, device=device).fill_(1)
+    b = torch.empty(2, 2, 3, 5, 5, device=device).fill_(2)
+
+    print("High Overhead - Dynamic number of dims, Re-Compilation")
+    print("+" * 100)
+    with cProfile.Profile() as pr:
+        # Third time run - The overhead is the low
+        a - b
+
+        s = io.StringIO()
+        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps.print_stats()
+        print(s.getvalue())
+
+    a = torch.empty(2, 2, 3, 5, 5, device=device).fill_(1)
+    b = torch.empty(2, 2, 3, 5, 5, device=device).fill_(2)
+
+    print("Low Overhead")
+    print("+" * 100)
+    with cProfile.Profile() as pr:
+        # Third time run - The overhead is the low
+        a - b
 
         s = io.StringIO()
         ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
