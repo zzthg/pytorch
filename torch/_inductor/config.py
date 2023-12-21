@@ -247,7 +247,7 @@ implicit_fallbacks = True
 aggressive_fusion = False
 
 # like aggressive fusion except we generate a foreach kernel instead.
-aggressive_horizontal_fusion_into_foreach = False
+aggressive_horizontal_fusion_into_foreach = True
 
 # For each fused kernel in the wrapper, comment with the nodes that get fused.
 # Useful for debugging fusion.
