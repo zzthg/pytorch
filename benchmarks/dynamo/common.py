@@ -661,15 +661,19 @@ def speedup_experiment(args, model_iter_fn, model, example_inputs, **kwargs):
             # call mark_step between the 2 calls to make the comparison fair.
             maybe_mark_step(args)
 
-            with maybe_mark_profile(p=p, mark="actual"):
-                timings[rep, 1], actual_output = timed(
-                    model,
-                    frozen_model_iter_fn,
-                    inputs,
-                    return_result=True,
-                    times=times,
-                    collect_outputs=args.collect_outputs,
-                )
+            from torch._dynamo import compiled_autograd
+            def compiler_fn(gm):
+                return torch.compile(gm, backend="inductor", fullgraph=True, dynamic=True)
+            with compiled_autograd.enable(compiler_fn):
+                with maybe_mark_profile(p=p, mark="actual"):
+                    timings[rep, 1], actual_output = timed(
+                        model,
+                        frozen_model_iter_fn,
+                        inputs,
+                        return_result=True,
+                        times=times,
+                        collect_outputs=args.collect_outputs,
+                    )
 
     if args.export_profiler_trace:
         name = args.profiler_trace_name + "_" + model.name + ".json"
@@ -2620,9 +2624,13 @@ class BenchmarkRunner:
                 optimized_model_iter_fn = optimize_ctx(self.model_iter_fn)
                 aot_compilation_time = 0
 
-            dynamo_latency, dynamo_peak_mem, dynamo_stats = warmup(
-                optimized_model_iter_fn, model, example_inputs, "dynamo"
-            )
+            from torch._dynamo import compiled_autograd
+            def compiler_fn(gm):
+                return torch.compile(gm, backend="inductor", fullgraph=True, dynamic=True)
+            with compiled_autograd.enable(compiler_fn):
+                dynamo_latency, dynamo_peak_mem, dynamo_stats = warmup(
+                    optimized_model_iter_fn, model, example_inputs, "dynamo"
+                )
 
             compilation_time = dynamo_latency - eager_latency + aot_compilation_time
             compression_ratio = (

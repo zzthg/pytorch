@@ -55,6 +55,7 @@ class AutogradCompilerInstance:
         return GetItemSource(LocalSource(name), idx)
 
     def begin_capture(self, inputs: List[torch.Tensor], sizes: List[int]):
+        print("compiled_autograd begin_capture")
         counters["compiled_autograd"]["captures"] += 1
         self.fx_tracer.root = torch.nn.Module()
         self.fx_tracer.graph = torch.fx.Graph(tracer_cls=PythonKeyTracer)
