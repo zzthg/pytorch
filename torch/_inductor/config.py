@@ -399,6 +399,9 @@ allow_stack_allocation: bool = True
 # but performance for that interface may be degraded.
 use_minimal_arrayref_interface: bool = False
 
+# flag to decide whether to create a submodule for constant graph.
+split_const_graph: bool = True
+
 
 # config specific to codegen/cpp.py
 class cpp:
