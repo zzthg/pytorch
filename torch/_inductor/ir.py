@@ -4317,9 +4317,13 @@ class IndexPutFallback(ExternKernel):
 class DeviceCopy(ExternKernelOut):
     @classmethod
     def create(cls, x, device):
-        if not x.is_extern() and all(
-            (r.name in V.graph.constants and isinstance(r, dependencies.MemoryDep))
-            for r in x.get_reads()
+        if (
+            not x.is_extern()
+            and all(
+                (r.name in V.graph.constants and isinstance(r, dependencies.MemoryDep))
+                for r in x.get_reads()
+            )
+            and (not V.graph.aot_mode or not config.use_runtime_constant_folding)
         ):
             return x.constant_to_device(device)
 
