@@ -188,6 +188,10 @@ class GraphLowering(torch.fx.Interpreter):
         layout_opt=None,
         extern_node_serializer=None,
         is_inference=False,
+        is_const_graph=False,
+        const_output_index=None,
+        const_code=None,
+        const_graph=None,
     ):
         super().__init__(gm)
 
@@ -199,6 +203,9 @@ class GraphLowering(torch.fx.Interpreter):
         )
         self.num_channels_last_conv = 0
         self.is_inference = is_inference
+        self.is_const_graph = is_const_graph
+        self.const_code = const_code
+        self.const_graph = const_graph
 
         self.extra_traceback = False  # we do our own error wrapping
         if shape_env is None:
@@ -211,11 +218,23 @@ class GraphLowering(torch.fx.Interpreter):
         self.sizevars = SizeVarAllocator(shape_env)
         self.graph_inputs: Dict[str, TensorBox] = {}
         self.graph_inputs_original: Dict[str, InputBuffer] = {}
-        self.device_types: Set[str] = set()
-        self.device_idxs: Set[int] = set()
+        self.device_types: Set[str] = const_graph.device_types if const_graph else set()
+        self.device_idxs: Set[int] = const_graph.device_idxs if const_graph else set()
         self.cuda = False
         self.buffers: List[ir.Buffer] = []
-        self.constants: Dict[str, torch.Tensor] = {}
+        self.const_output_index: Dict[str, int] = (
+            const_output_index if const_output_index else {}
+        )
+        self.const_kernels: Set[str] = (
+            const_graph.wrapper_code.src_to_kernel.values() if const_graph else set()
+        )
+        self.folded_constants: Set[str] = (
+            set(const_output_index.keys()) if const_output_index else set()
+        )
+        self.constants: Dict[str, torch.Tensor] = (
+            const_graph.constants if const_graph else {}
+        )
+        self.used_constants: Set[str] = set()
         self.constant_reprs: Dict[str, str] = {}
         self.removed_buffers: Set[str] = set()
         self.removed_inplace_buffers: Set[str] = set()
@@ -579,16 +598,17 @@ class GraphLowering(torch.fx.Interpreter):
 
     def add_tensor_constant(self, data, name=None):
         def allocate(name):
-            for constant_name, value in self.constants.items():
-                if (
-                    not data.is_mkldnn
-                    and data.size() == value.size()
-                    and data.stride() == value.stride()
-                    and data.dtype == value.dtype
-                    and data.device == value.device
-                    and torch.eq(data, value).all()
-                ):
-                    return constant_name
+            if not config.use_runtime_constant_folding:
+                for constant_name, value in self.constants.items():
+                    if (
+                        not data.is_mkldnn
+                        and data.size() == value.size()
+                        and data.stride() == value.stride()
+                        and data.dtype == value.dtype
+                        and data.device == value.device
+                        and torch.eq(data, value).all()
+                    ):
+                        return constant_name
 
             if name is None:
                 name = f"constant{len(self.constants)}"
@@ -611,6 +631,7 @@ class GraphLowering(torch.fx.Interpreter):
             return name
 
         name = allocate(name)
+        self.used_constants.add(name)
 
         return TensorBox.create(
             ir.ConstantBuffer(
@@ -718,7 +739,11 @@ class GraphLowering(torch.fx.Interpreter):
         # this is a constant
         value = getattr(self.module, target)
 
-        if config.always_keep_tensor_constants or unsupported_output_tensor(value):
+        if (
+            config.use_runtime_constant_folding
+            or config.always_keep_tensor_constants
+            or unsupported_output_tensor(value)
+        ):
             return self.add_tensor_constant(value, target)
 
         with no_dispatch():
