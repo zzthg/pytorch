@@ -46,20 +46,17 @@ static __device__ inline bool isAligned(const void* ptr, size_t alignment) {
 static __global__ void fsdpAllGatherCopyOutKernel(
     void** paramPtrs,
     void* allGatherResPtr,
-    int64_t totalSize,
     int64_t* blockOffsetToParamIdx,
     int64_t* blockCumSums,
     int64_t* shardDimCumSums,
-    int64_t numParams,
-    int64_t shardDimSum,
-    int64_t blockDimSum,
-    int64_t ranksPerBlock,
+    int64_t numBytesPerRank,
+    int64_t numBlocksPerRank,
+    int64_t rankStride,
     int64_t worldSize) {
-  const int64_t blockOffset = blockIdx.x % blockDimSum;
+  const int64_t blockOffset = blockIdx.x % numBlocksPerRank;
   const int64_t paramIdx = blockOffsetToParamIdx[blockOffset];
-
-  for (int64_t rank = blockIdx.x / blockDimSum; rank < worldSize;
-       rank += worldSize / ranksPerBlock) {
+  for (int64_t rank = blockIdx.x / numBlocksPerRank; rank < worldSize;
+       rank += rankStride) {
     const int64_t shardBlockCount =
         blockCumSums[paramIdx + 1] - blockCumSums[paramIdx];
     const int64_t groupSize = shardBlockCount * blockDim.x;
@@ -69,11 +66,11 @@ static __global__ void fsdpAllGatherCopyOutKernel(
     const int64_t shardBegin = shardDimCumSums[paramIdx];
     const int64_t shardEnd = shardDimCumSums[paramIdx + 1];
     const int64_t shardLen = shardEnd - shardBegin;
-    const int64_t srcOff = rank * shardDimSum + shardBegin;
+    const int64_t srcOff = rank * numBytesPerRank + shardBegin;
     const int64_t dstOff = rank * shardLen;
 
     const char* srcPtr = reinterpret_cast<char*>(allGatherResPtr) + srcOff;
-    char* dstPtr = &reinterpret_cast<char*>(paramPtrs[paramIdx])[dstOff];
+    char* dstPtr = reinterpret_cast<char*>(paramPtrs[paramIdx]) + dstOff;
 
     const int64_t alignOff =
         divUp(dstOff, BYTES_PER_THREAD) * BYTES_PER_THREAD - dstOff;
@@ -84,7 +81,7 @@ static __global__ void fsdpAllGatherCopyOutKernel(
 
     for (size_t i = begin; i < end; i += stride) {
       uint4 val;
-      if (isAligned(srcPtr + i, 128)) {
+      if (isAligned(srcPtr + i, BYTES_PER_THREAD)) {
         streamLoad128(val, srcPtr + i);
       } else {
         for (size_t j = 0; j < BYTES_PER_THREAD; ++j) {
@@ -228,14 +225,137 @@ void fsdpAllGatherCopyOut(
       at::cuda::getCurrentCUDAStream()>>>(
       reinterpret_cast<void**>(packed.second[0]),
       allGatherRes.data_ptr(),
-      totalSize,
       /*blockOffsetToParamIdx=*/packed.second[1],
       /*blockCumSums=*/packed.second[2],
       /*shardDimCumSums=*/packed.second[3],
-      params.size(),
       dimCumSums.back(),
       blockCumSums.back(),
-      ranksPerBlock,
+      worldSize / ranksPerBlock,
       worldSize);
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+}
+
+static __global__ void fsdpReduceScatterCopyInKernel(
+  void **params,
+  void* reduceScatterArr,
+  int64_t* blockOffsetToParamIdx,
+  int64_t* blockCumSums,
+  int64_t* shardDimCumSums,
+  int64_t numBytesPerRank,
+  int64_t numBlocksPerRank,
+  int64_t rankStride,
+  int64_t worldSize
+) {
+  const int64_t blockOffset = blockIdx.x % numBlocksPerRank;
+  const int64_t paramIdx = blockOffsetToParamIdx[blockOffset];
+  for (int64_t rank = blockIdx.x / numBlocksPerRank; rank < worldSize; rank += rankStride) {
+    const int64_t shardBlockCount = blockCumSums[paramIdx + 1] - blockCumSums[paramIdx];
+    const int64_t groupSize = shardBlockCount * blockDim.x;
+    const int64_t localTid = (blockOffset - blockCumSums[paramIdx]) * blockDim.x + threadIdx.x;
+    const int64_t shardBegin = shardDimCumSums[paramIdx];
+    const int64_t shardEnd = shardDimCumSums[paramIdx+1];
+    const int64_t shardLen = shardEnd - shardBegin;
+    const int64_t dstOff = rank * numBytesPerRank + shardBegin;
+    const int64_t srcOff = rank * shardLen;
+    char* dstPtr = reinterpret_cast<char*>(reduceScatterArr) + dstOff;
+    const char* srcPtr = reinterpret_cast<char*>(params[paramIdx]) + srcOff;
+    const int64_t alignOff =
+      divUp(dstOff, BYTES_PER_THREAD) * BYTES_PER_THREAD - dstOff;
+    const int64_t begin = alignOff + localTid * BYTES_PER_THREAD;
+    const int64_t end = alignOff + (shardLen - alignOff) / BYTES_PER_THREAD * BYTES_PER_THREAD;
+    const int64_t stride = groupSize * BYTES_PER_THREAD;
+    for (size_t i = begin; i < end; i+=stride) {
+      uint4 val;
+      if(isAligned(srcPtr + i, BYTES_PER_THREAD)) {
+        streamLoad128(val, srcPtr + i);
+      } else {
+        for (size_t j = 0; j < BYTES_PER_THREAD; ++j) {
+          reinterpret_cast<char*>(&val)[j] = srcPtr[i + j];
+        }
+      }
+      streamStore128(&dstPtr[i], val);
+    }
+    if(localTid < alignOff && localTid < shardLen) {
+      dstPtr[localTid] = srcPtr[localTid];
+    }
+    if(end + localTid < shardLen) {
+      dstPtr[end+localTid] = srcPtr[end + localTid];
+    }
+  }
+}
+
+void fsdpReduceScatterCopyIn(
+  std::vector<at::Tensor> params,
+  at::Tensor reduceScatterArr,
+  int64_t worldSize
+) {
+  const auto device = reduceScatterArr.device();
+  const auto totalSize = reduceScatterArr.numel() * reduceScatterArr.element_size();
+  TORCH_CHECK(reduceScatterArr.is_cuda());
+  TORCH_CHECK(reduceScatterArr.is_non_overlapping_and_dense());
+  std::vector<int64_t> paramPtrs;
+  std::vector<int64_t> shardDims;
+  std::vector<int64_t> dimCumSums{0};
+  for (size_t i = 0; i < params.size(); ++i) {
+    const auto& param = params[i];
+    TORCH_CHECK(param.is_non_overlapping_and_dense());
+    TORCH_CHECK(param.device() == device);
+    TORCH_CHECK(param.numel() > 0);
+    TORCH_CHECK(param.numel() % worldSize == 0);
+    const auto shardDim = param.numel() * param.element_size() / worldSize;
+    paramPtrs.push_back(reinterpret_cast<int64_t>(param.data_ptr()));
+    shardDims.push_back(shardDim);
+    dimCumSums.push_back(dimCumSums[i] + shardDim);
+  }
+  TORCH_CHECK(
+    dimCumSums.back() * worldSize == totalSize,
+    "The total byte size must be identical between params and reduceScatterArr"
+  );
+  int64_t meanShardDim = geometricMean(shardDims);
+  int64_t blockSize = divUp(meanShardDim, BYTES_PER_THREAD);
+  blockSize = divUp(blockSize, WARP_SIZE) * WARP_SIZE;
+  blockSize = std::min(std::max(blockSize, MIN_NUM_THREADS), MAX_NUM_THREADS);
+  constexpr int64_t maxActiveBlocks = 32 * 108;
+  constexpr double smOverSubFactor = 1.75;
+  int64_t iterFactor = 1;
+  while (divUp(totalSize, blockSize * BYTES_PER_THREAD * iterFactor) >
+    (maxActiveBlocks * smOverSubFactor)) {
+      iterFactor += 1;
+  }
+  std::vector<int64_t> blockOffsetToParamIdx;
+  std::vector<int64_t> blockCumSums{0};
+  for (int64_t paramIdx = 0; paramIdx < static_cast<int64_t>(params.size());
+    ++paramIdx) {
+    int64_t numBlocks = divUp(shardDims[paramIdx], blockSize * BYTES_PER_THREAD * iterFactor);
+    blockOffsetToParamIdx.insert(blockOffsetToParamIdx.end(), numBlocks, paramIdx);
+    blockCumSums.push_back(blockCumSums.back() + numBlocks);
+  }
+  const auto numBlocks = blockCumSums.back();
+  auto packed = pack(
+    {paramPtrs, blockOffsetToParamIdx, blockCumSums, dimCumSums}, device
+  );
+  int64_t ranksPerBlock = 1;
+  while (numBlocks * (worldSize / ranksPerBlock) >
+          maxActiveBlocks * smOverSubFactor &&
+        ranksPerBlock < worldSize) {
+    ++ranksPerBlock;
+  }
+  dim3 blocks(numBlocks * (worldSize / ranksPerBlock), 1, 1);
+  dim3 threads(blockSize, 1, 1);
+  fsdpReduceScatterCopyInKernel<<<
+    blocks,
+    threads,
+    0,
+    at::cuda::getCurrentCUDAStream()>>>(
+      reinterpret_cast<void**>(packed.second[0]),
+      reduceScatterArr.data_ptr(),
+            /*blockOffsetToParamIdx=*/packed.second[1],
+      /*blockCumSums=*/packed.second[2],
+      /*shardDimCumSums=*/packed.second[3],
+      dimCumSums.back(),
+      blockCumSums.back(),
+      worldSize / ranksPerBlock,
+      worldSize
+  );
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }

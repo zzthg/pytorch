@@ -6,6 +6,10 @@ void fsdpAllGatherCopyOut(
     std::vector<at::Tensor> params,
     at::Tensor allGatherRes,
     int64_t worldSize);
+void fsdpReduceScatterCopyIn(
+    std::vector<at::Tensor> params,
+    at::Tensor reduceScatterArr,
+    int64_t worldSize);
 #endif
 
 namespace {
@@ -21,6 +25,18 @@ void fsdp_all_gather_copy_out(
 #endif
 }
 
+void fsdp_reduce_scatter_copy_in(
+  std::vector<at::Tensor> params,
+  at::Tensor reduce_scatter_array,
+  int64_t world_size
+) {
+#ifdef USE_CUDA
+  return fsdpReduceScatterCopyIn(params, reduce_scatter_array, world_size);
+#else
+  C10_THROW_ERROR(NotImplementedError, "Not implemented for CPU");
+#endif
+}
+
 } // namespace
 
 TORCH_LIBRARY_FRAGMENT(c10d, m) {
@@ -30,5 +46,12 @@ TORCH_LIBRARY_FRAGMENT(c10d, m) {
       torch::dispatch(
           c10::DispatchKey::CompositeExplicitAutograd,
           ::fsdp_all_gather_copy_out),
+      {at::Tag::pt2_compliant_tag});
+  m.def(
+    "fsdp_reduce_scatter_copy_in("
+    "Tensor[] params, Tensor reduce_scatter_array, int world_size) -> ()",
+    torch::dispatch(
+      c10::DispatchKey::CompositeExplicitAutograd,
+      ::fsdp_reduce_scatter_copy_in),
       {at::Tag::pt2_compliant_tag});
 }
