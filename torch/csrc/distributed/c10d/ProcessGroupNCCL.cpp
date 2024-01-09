@@ -768,6 +768,8 @@ ProcessGroupNCCL::ProcessGroupNCCL(
   monitorThreadEnabled_.store(getCvarBool(TORCH_NCCL_ENABLE_MONITORING, true));
   heartbeatTimeoutInSec_ =
       getCvarInt(TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC, 60 * 10 /*10 Mins*/);
+  waitTimeoutDumpInMilSec_ =
+      getCvarInt(TORCH_NCCL_WAIT_TIMEOUT_DUMP_MILSEC, 2000);
   ncclTraceBufferSize_ = getCvarInt(TORCH_NCCL_TRACE_BUFFER_SIZE, 0);
   enableCollecticeHashDebug_ = (dist_debug_level_ >= DebugLevel::Detail);
   PrefixStore* prefixStore = dynamic_cast<PrefixStore*>(store_.get());
@@ -835,6 +837,8 @@ ProcessGroupNCCL::ProcessGroupNCCL(
             << ", global rank: " << globalRank()
             << ", TORCH_NCCL_ASYNC_ERROR_HANDLING: " << asyncErrorHandling_
             << ", TORCH_NCCL_DUMP_ON_TIMEOUT: " << dumpOnTimeout_
+            << ", TORCH_NCCL_WAIT_TIMEOUT_DUMP_MILSEC: "
+            << waitTimeoutDumpInMilSec_
             << ", TORCH_NCCL_DESYNC_DEBUG: " << desyncDebug_
             << ", TORCH_NCCL_ENABLE_TIMING: " << enableTiming_.load()
             << ", TORCH_NCCL_BLOCKING_WAIT: " << blockingWait_
@@ -1090,6 +1094,11 @@ std::future<bool> ProcessGroupNCCL::launchAsyncDebugDump() {
   return resultFuture;
 }
 
+void ProcessGroupNCCL::extraWaitForDumpUntil(
+    const std::chrono::time_point<std::chrono::steady_clock>& wakeUpTime) {
+  std::this_thread::sleep_until(wakeUpTime);
+}
+
 void ProcessGroupNCCL::waitForDumpOrTimeout(
     std::future<bool>& fut,
     size_t timeout_sec) {
@@ -1302,6 +1311,8 @@ void ProcessGroupNCCL::heartbeatMonitor() {
         << "GIL checker was not registered, perhaps this is a no-python build?";
   }
 
+  auto wakeUpTime = std::chrono::steady_clock::now() +
+      std::chrono::milliseconds(waitTimeoutDumpInMilSec_);
   // Store debug info to storage if no other thread does it. (By default to
   // local disk)
   std::future<bool> asyncDebugDump = launchAsyncDebugDump();
@@ -1331,6 +1342,7 @@ void ProcessGroupNCCL::heartbeatMonitor() {
   // check the return value here.  We mainly use a future so we can exit early
   // if done.
   waitForDumpOrTimeout(asyncDebugDump);
+  extraWaitForDumpUntil(wakeUpTime);
 
   if (!terminateHeartbeatMonitorThread_.load()) {
     // Create a error message reported from MonitorThread, so
@@ -1535,8 +1547,11 @@ void ProcessGroupNCCL::watchdogHandler() {
         lastTimePollStore = currentTime;
         if (globalStore_->check({std::string(TIMEOUT_DUMP)}) &&
             !optAsyncDebugDump) {
+          auto wakeUpTime = std::chrono::steady_clock::now() +
+              std::chrono::milliseconds(waitTimeoutDumpInMilSec_);
           optAsyncDebugDump = launchAsyncDebugDump();
           waitForDumpOrTimeout(*optAsyncDebugDump);
+          extraWaitForDumpUntil(wakeUpTime);
           const auto exitMsg = c10::str(
               logPrefix(),
               "Another rank reported a timeout and signaled a global abort.");
@@ -1573,6 +1588,8 @@ void ProcessGroupNCCL::watchdogHandler() {
               globalStore_->set(std::string(TIMEOUT_DUMP), vec);
             }
 
+            auto wakeUpTime = std::chrono::steady_clock::now() +
+                std::chrono::milliseconds(waitTimeoutDumpInMilSec_);
             if (dumpOnTimeout_ && !optAsyncDebugDump) {
               // Store debug info to storage. (By default to local disk)
               optAsyncDebugDump = launchAsyncDebugDump();
@@ -1586,6 +1603,7 @@ void ProcessGroupNCCL::watchdogHandler() {
             if (dumpOnTimeout_) {
               // Store debug info to storage. (By default to local disk)
               waitForDumpOrTimeout(*optAsyncDebugDump);
+              extraWaitForDumpUntil(wakeUpTime);
             }
 
           } catch (const std::exception& e) {
