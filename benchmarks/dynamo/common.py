@@ -247,6 +247,21 @@ CI_USE_SGD = {
 
 DO_NOT_CAST_INPUTS = {"stable_diffusion"}
 
+from torch._dynamo import compiled_autograd
+
+def compiler_fn(gm):
+    def inner_compiler(gm_, example_inputs_):
+        torch._dynamo.utils.counters["compiled_autograd"]["compiles"] += 1
+        return torch._inductor.compile(gm_, example_inputs_)
+    return torch.compile(gm, backend=inner_compiler, dynamic=True)#, fullgraph=True, dynamic=True)
+
+@contextlib.contextmanager
+def maybe_compiled_autograd(should_enable):
+    if should_enable:
+        with compiled_autograd.enable(compiler_fn) as cm:
+            yield cm
+    else:
+        yield
 
 def model_specified_by_path(path_and_class_str):
     return ":" in path_and_class_str
@@ -663,14 +678,15 @@ def speedup_experiment(args, model_iter_fn, model, example_inputs, **kwargs):
             maybe_mark_step(args)
 
             with maybe_mark_profile(p=p, mark="actual"):
-                timings[rep, 1], actual_output = timed(
-                    model,
-                    frozen_model_iter_fn,
-                    inputs,
-                    return_result=True,
-                    times=times,
-                    collect_outputs=args.collect_outputs,
-                )
+                with maybe_compiled_autograd(args.compiled_autograd):
+                    timings[rep, 1], actual_output = timed(
+                        model,
+                        frozen_model_iter_fn,
+                        inputs,
+                        return_result=True,
+                        times=times,
+                        collect_outputs=args.collect_outputs,
+                    )
 
     if args.export_profiler_trace:
         name = args.profiler_trace_name + "_" + model.name + ".json"
@@ -1881,6 +1897,8 @@ def get_dynamo_stats():
             "graph_breaks": sum(torch._dynamo.utils.counters["graph_break"].values()),
             # NB: The plus removes zero counts
             "unique_graph_breaks": len(+torch._dynamo.utils.counters["graph_break"]),
+            "compiled_autograd_captures": torch._dynamo.utils.counters["compiled_autograd"]["captures"],
+            "compiled_autograd_compiles": torch._dynamo.utils.counters["compiled_autograd"]["compiles"]
         }
     )
 
@@ -2430,7 +2448,8 @@ class BenchmarkRunner:
                         new_result = optimized_model_iter_fn(model_copy, example_inputs)
                 else:
                     optimized_model_iter_fn = optimize_ctx(self.run_n_iterations)
-                    new_result = optimized_model_iter_fn(model_copy, example_inputs)
+                    with maybe_compiled_autograd(self.args.compiled_autograd):
+                        new_result = optimized_model_iter_fn(model_copy, example_inputs)
             except Exception as e:
                 log.exception(e)
                 print(
@@ -2622,7 +2641,9 @@ class BenchmarkRunner:
                 optimized_model_iter_fn = optimize_ctx(self.model_iter_fn)
                 aot_compilation_time = 0
 
-            dynamo_latency, dynamo_peak_mem, dynamo_stats = warmup(
+            print("warming up")
+            with maybe_compiled_autograd(self.args.compiled_autograd):
+                dynamo_latency, dynamo_peak_mem, dynamo_stats = warmup(
                 optimized_model_iter_fn, model, example_inputs, "dynamo"
             )
 
@@ -3140,6 +3161,12 @@ def parse_args(args=None):
         "--minify",
         action="store_true",
         help="Enable minification when failure is below tolerance. Save repro script for each model.",
+    )
+
+    parser.add_argument(
+        "--compiled-autograd",
+        action="store_true",
+        help="Enables compiled autograd on compiled benchmark",
     )
 
     group_fuser = parser.add_mutually_exclusive_group()
