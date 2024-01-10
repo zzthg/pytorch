@@ -81,6 +81,7 @@ class UserDefinedClassVariable(UserDefinedVariable):
             torch.Tensor,
             torch.cuda.Stream,
             torch.cuda.Event,
+            torch.nn.Parameter,
         }
 
     def can_constant_fold_through(self):
