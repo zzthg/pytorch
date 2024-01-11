@@ -263,20 +263,21 @@ static __global__ void padCatDim0Kernel(
     const int64_t localTid = (blockOffset - cumSumBlocksPerShard[tensorIdx]) * blockDim.x + threadIdx.x;
     const int64_t shardBegin = cumSumNumBytesPerShard[tensorIdx];
     const int64_t shardEnd = cumSumNumBytesPerShard[tensorIdx+1];
-    const int64_t shardLen = shardEnd - shardBegin;
+    const int64_t shardNumBytes = shardEnd - shardBegin;
     const int64_t dstOff = rank * numBytesPerRank + shardBegin;
-    const int64_t srcOff = rank * shardLen;
+    const int64_t srcOff = rank * shardNumBytes;
     char* dstPtr = reinterpret_cast<char*>(out) + dstOff;
     const char* srcPtr = reinterpret_cast<char*>(tensors[tensorIdx]) + srcOff;
     const int64_t alignOff =
       divUp(dstOff, BYTES_PER_THREAD) * BYTES_PER_THREAD - dstOff;
     const int64_t begin = alignOff + localTid * BYTES_PER_THREAD;
-    const int64_t end = alignOff + (shardLen - alignOff) / BYTES_PER_THREAD * BYTES_PER_THREAD;
+    const int64_t end = alignOff + (shardNumBytes - alignOff) / BYTES_PER_THREAD * BYTES_PER_THREAD;
     const int64_t stride = groupSize * BYTES_PER_THREAD;
     const uint4 zero = initialize();
     for (size_t i = begin; i < end; i += stride) {
       uint4 val = zero;
-      if(srcOff + i < tensorBytes[tensorIdx]) {
+      // TODO: This check can be removed.
+      if(srcOff + i + BYTES_PER_THREAD - 1 < tensorBytes[tensorIdx]) {
         if(isAligned(srcPtr + i, BYTES_PER_THREAD)) {
           streamLoad128(val, srcPtr + i);
         } else {
@@ -284,17 +285,21 @@ static __global__ void padCatDim0Kernel(
             reinterpret_cast<char*>(&val)[j] = srcPtr[i + j];
           }
         }
+      } else {
+          for (size_t j = 0; srcOff + i + j < tensorBytes[tensorIdx]; ++j) {
+            reinterpret_cast<char*>(&val)[j] = srcPtr[i + j];
+          }
       }
       streamStore128(&dstPtr[i], val);
     }
-    if(localTid < alignOff && localTid < shardLen) {
+    if(localTid < alignOff && localTid < shardNumBytes) {
       char val = (char) 0;
       if (srcOff + localTid < tensorBytes[tensorIdx]) {
         val = srcPtr[localTid];
       }
       dstPtr[localTid] = val;
     }
-    if(end + localTid < shardLen) {
+    if(end + localTid < shardNumBytes) {
       char val = (char) 0;
       if (srcOff + end + localTid < tensorBytes[tensorIdx]) {
         val = srcPtr[end + localTid];
@@ -319,6 +324,8 @@ void padCatDim0(
   std::vector<int64_t> tensorBytes;
   std::vector<int64_t> tensorIdxToNumBytesPerShard;
   std::vector<int64_t> cumSumNumBytesPerShard{0};
+  // TODO: We may only do boundary check once.
+  // There are three types of blocks: within boundary, outside boundary, or on the boundary. We do not need to check boundary many times.
   for (size_t i = 0; i < tensors.size(); ++i) {
     const auto& tensor = tensors[i];
     TORCH_CHECK(tensor.is_non_overlapping_and_dense());
@@ -342,17 +349,17 @@ void padCatDim0(
     blockOffsetToTensorIdx.insert(blockOffsetToTensorIdx.end(), numBlocksPerShard, tensorIdx);
     cumSumBlocksPerShard.push_back(cumSumBlocksPerShard.back() + numBlocksPerShard);
   }
-  const auto numBlocks = cumSumBlocksPerShard.back();
+  const auto numBlocksPerRank = cumSumBlocksPerShard.back();
   auto packed = pack(
     {tensorPtrs, blockOffsetToTensorIdx, cumSumBlocksPerShard, cumSumNumBytesPerShard, tensorBytes}, device
   );
   int64_t ranksPerBlock = 1;
-  while (numBlocks * (factor / ranksPerBlock) >
+  while (numBlocksPerRank * (factor / ranksPerBlock) >
           maxActiveBlocks * smOverSubFactor &&
         ranksPerBlock < factor) {
     ++ranksPerBlock;
   }
-  dim3 blocks(numBlocks * (factor / ranksPerBlock), 1, 1);
+  dim3 blocks(numBlocksPerRank * (factor / ranksPerBlock), 1, 1);
   dim3 threads(BLOCK_SIZE, 1, 1);
   padCatDim0Kernel<<<
     blocks,
@@ -366,7 +373,7 @@ void padCatDim0(
       /*cumSumBlocksPerShard=*/packed.second[2],
       /*cumSumNumBytesPerShard=*/packed.second[3],
       cumSumNumBytesPerShard.back(),
-      cumSumBlocksPerShard.back(),
+      numBlocksPerRank,
       /*tensorBytes=*/packed.second[4],
       factor / ranksPerBlock
   );
