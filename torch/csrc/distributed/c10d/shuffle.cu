@@ -39,6 +39,14 @@ static __host__ __device__ inline int64_t divUp(int64_t a, int64_t b) {
   return (a + b - 1) / b;
 }
 
+static __host__ __device__ inline int64_t minInt64(int64_t a, int64_t b) {
+  return a < b ? a : b;
+}
+
+static __host__ __device__ inline int64_t maxInt64(int64_t a, int64_t b) {
+  return a < b ? b : a;
+}
+
 static __device__ inline bool isAligned(const void* ptr, size_t alignment) {
   uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
   return addr % alignment == 0;
@@ -263,45 +271,39 @@ static __global__ void padCatDim0Kernel(
     const int64_t localTid = (blockOffset - cumSumBlocksPerShard[tensorIdx]) * blockDim.x + threadIdx.x;
     const int64_t shardBegin = cumSumNumBytesPerShard[tensorIdx];
     const int64_t shardEnd = cumSumNumBytesPerShard[tensorIdx+1];
-    const int64_t shardNumBytes = shardEnd - shardBegin;
+    const int64_t theoryShardNumBytes = shardEnd - shardBegin;
+    const int64_t actualNumBytes = minInt64(theoryShardNumBytes, maxInt64(tensorBytes[tensorIdx] - rank * theoryShardNumBytes, 0));
     const int64_t dstOff = rank * numBytesPerRank + shardBegin;
-    const int64_t srcOff = rank * shardNumBytes;
+    const int64_t srcOff = rank * theoryShardNumBytes;
     char* dstPtr = reinterpret_cast<char*>(out) + dstOff;
     const char* srcPtr = reinterpret_cast<char*>(tensors[tensorIdx]) + srcOff;
     const int64_t alignOff =
       divUp(dstOff, BYTES_PER_THREAD) * BYTES_PER_THREAD - dstOff;
     const int64_t begin = alignOff + localTid * BYTES_PER_THREAD;
-    const int64_t end = alignOff + (shardNumBytes - alignOff) / BYTES_PER_THREAD * BYTES_PER_THREAD;
+    const int64_t end = alignOff + (actualNumBytes - alignOff) / BYTES_PER_THREAD * BYTES_PER_THREAD;
     const int64_t stride = groupSize * BYTES_PER_THREAD;
     const uint4 zero = initialize();
     for (size_t i = begin; i < end; i += stride) {
       uint4 val = zero;
-      // TODO: This check can be removed.
-      if(srcOff + i + BYTES_PER_THREAD - 1 < tensorBytes[tensorIdx]) {
-        if(isAligned(srcPtr + i, BYTES_PER_THREAD)) {
-          streamLoad128(val, srcPtr + i);
-        } else {
-          for (size_t j = 0; j < BYTES_PER_THREAD; ++j) {
-            reinterpret_cast<char*>(&val)[j] = srcPtr[i + j];
-          }
-        }
+      if(isAligned(srcPtr + i, BYTES_PER_THREAD)) {
+        streamLoad128(val, srcPtr + i);
       } else {
-          for (size_t j = 0; srcOff + i + j < tensorBytes[tensorIdx]; ++j) {
-            reinterpret_cast<char*>(&val)[j] = srcPtr[i + j];
-          }
+        for (size_t j = 0; j < BYTES_PER_THREAD; ++j) {
+          reinterpret_cast<char*>(&val)[j] = srcPtr[i + j];
+        }
       }
       streamStore128(&dstPtr[i], val);
     }
-    if(localTid < alignOff && localTid < shardNumBytes) {
+    if(localTid < alignOff && localTid < theoryShardNumBytes) {
       char val = (char) 0;
-      if (srcOff + localTid < tensorBytes[tensorIdx]) {
+      if (localTid < actualNumBytes) {
         val = srcPtr[localTid];
       }
       dstPtr[localTid] = val;
     }
-    if(end + localTid < shardNumBytes) {
+    if(end + localTid < theoryShardNumBytes) {
       char val = (char) 0;
-      if (srcOff + end + localTid < tensorBytes[tensorIdx]) {
+      if (end + localTid < actualNumBytes) {
         val = srcPtr[end + localTid];
       }
       dstPtr[end + localTid] = val;
