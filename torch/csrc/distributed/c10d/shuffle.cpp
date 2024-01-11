@@ -1,15 +1,18 @@
 #include <ATen/ATen.h>
 #include <torch/library.h>
+// TODO: Think about file name. Should it be shuffle.cpp or something else?
 
 #ifdef USE_CUDA
 void fsdpAllGatherCopyOut(
     std::vector<at::Tensor> params,
     at::Tensor allGatherRes,
     int64_t worldSize);
-void fsdpReduceScatterCopyIn(
-    std::vector<at::Tensor> params,
-    at::Tensor reduceScatterArr,
-    int64_t worldSize);
+void padCat(
+    std::vector<at::Tensor> tensors,
+    int64_t dim,
+    int64_t factor,
+    at::Tensor out
+);
 #endif
 
 namespace {
@@ -25,13 +28,14 @@ void fsdp_all_gather_copy_out(
 #endif
 }
 
-void fsdp_reduce_scatter_copy_in(
-  std::vector<at::Tensor> params,
-  at::Tensor reduce_scatter_array,
-  int64_t world_size
+void pad_cat(
+  std::vector<at::Tensor> tensors,
+  int64_t dim,
+  int64_t factor,
+  at::Tensor out
 ) {
 #ifdef USE_CUDA
-  return fsdpReduceScatterCopyIn(params, reduce_scatter_array, world_size);
+  return padCat(tensors, dim, factor, out);
 #else
   C10_THROW_ERROR(NotImplementedError, "Not implemented for CPU");
 #endif
@@ -48,10 +52,10 @@ TORCH_LIBRARY_FRAGMENT(c10d, m) {
           ::fsdp_all_gather_copy_out),
       {at::Tag::pt2_compliant_tag});
   m.def(
-    "fsdp_reduce_scatter_copy_in("
-    "Tensor[] params, Tensor reduce_scatter_array, int world_size) -> ()",
+    "pad_cat("
+    "Tensor[] tensors, int dim, int factor, Tensor out) -> ()",
     torch::dispatch(
       c10::DispatchKey::CompositeExplicitAutograd,
-      ::fsdp_reduce_scatter_copy_in),
+      ::pad_cat),
       {at::Tag::pt2_compliant_tag});
 }
