@@ -7,7 +7,7 @@ constexpr int64_t BYTES_PER_THREAD = 16;
 constexpr int64_t MAX_NUM_THREADS = 1024;
 constexpr int64_t MIN_NUM_THREADS = 128;
 constexpr int64_t WARP_SIZE = 32;
-constexpr int64_t BLOCK_SIZE = 32;
+constexpr int64_t BLOCK_SIZE = 512;
 
 template <typename T>
 __device__ inline void streamLoad128(uint4& val, const T* addr) {
@@ -266,13 +266,16 @@ static __global__ void padCatDim0Kernel(
   const int64_t blockOffset = blockIdx.x % numBlocksPerRank;
   const int64_t tensorIdx = blockOffsetToTensorIdx[blockOffset];
   for (int64_t rank = blockIdx.x / numBlocksPerRank; rank < factor; rank += rankStride) {
-    const int64_t shardBlockCount = cumSumBlocksPerShard[tensorIdx + 1] - cumSumBlocksPerShard[tensorIdx];
-    const int64_t groupSize = shardBlockCount * blockDim.x;
-    const int64_t localTid = (blockOffset - cumSumBlocksPerShard[tensorIdx]) * blockDim.x + threadIdx.x;
     const int64_t shardBegin = cumSumNumBytesPerShard[tensorIdx];
     const int64_t shardEnd = cumSumNumBytesPerShard[tensorIdx+1];
     const int64_t theoryShardNumBytes = shardEnd - shardBegin;
     const int64_t actualNumBytes = minInt64(theoryShardNumBytes, maxInt64(tensorBytes[tensorIdx] - rank * theoryShardNumBytes, 0));
+    if (actualNumBytes == 0) {
+      return;
+    }
+    const int64_t shardBlockCount = cumSumBlocksPerShard[tensorIdx + 1] - cumSumBlocksPerShard[tensorIdx];
+    const int64_t groupSize = shardBlockCount * blockDim.x;
+    const int64_t localTid = (blockOffset - cumSumBlocksPerShard[tensorIdx]) * blockDim.x + threadIdx.x;
     const int64_t dstOff = rank * numBytesPerRank + shardBegin;
     const int64_t srcOff = rank * theoryShardNumBytes;
     char* dstPtr = reinterpret_cast<char*>(out) + dstOff;
