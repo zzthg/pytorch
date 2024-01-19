@@ -2229,7 +2229,8 @@ class BenchmarkRunner:
             ), "Can't use DDP without a distributed enabled build"
             from torch.nn.parallel import DistributedDataParallel as DDP
 
-            model = DDP(model, find_unused_parameters=True)
+            # model = DDP(model, find_unused_parameters=True)
+            model = DDP(model)
         elif self.args.fsdp:
             assert (
                 torch.distributed.is_available()
@@ -2304,7 +2305,8 @@ class BenchmarkRunner:
                 headers.append(k)
                 fields.append(v)
 
-            output_csv(output_filename, headers, fields)
+            if torch.distributed.get_rank() == 0:
+                output_csv(output_filename, headers, fields)
             return accuracy_status
 
         if name in self.skip_accuracy_checks_large_models_dashboard:
@@ -3150,6 +3152,7 @@ def parse_args(args=None):
         "--compiled-autograd",
         action="store_true",
         help="Enables compiled autograd on compiled benchmark",
+        default=True,
     )
 
     group_fuser = parser.add_mutually_exclusive_group()
