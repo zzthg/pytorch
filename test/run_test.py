@@ -58,7 +58,6 @@ from tools.testing.test_selections import (
     get_test_case_configs,
     NUM_PROCS,
     ShardedTest,
-    THRESHOLD,
 )
 
 HAVE_TEST_SELECTION_TOOLS = True
@@ -607,18 +606,6 @@ def run_test(
 
     command = (launcher_cmd or []) + executable + argv
     num_retries = 0 if "--subprocess" in command or RERUN_DISABLED_TESTS else 2
-    is_slow = "slow" in os.environ.get("TEST_CONFIG", "") or "slow" in os.environ.get(
-        "BUILD_ENVRIONMENT", ""
-    )
-    timeout = (
-        THRESHOLD * 6
-        if is_slow
-        else THRESHOLD * 3
-        if num_retries > 0
-        and isinstance(test_module, ShardedTest)
-        and test_module.time is not None
-        else None
-    )
     print_to_stderr(f"Executing {command} ... [{datetime.now()}]")
 
     with ExitStack() as stack:
@@ -629,7 +616,7 @@ def run_test(
         if options.continue_through_error and "--subprocess" not in command:
             # I think subprocess is better handled by common_utils? but it's not working atm
             ret_code, was_rerun = run_test_continue_through_error(
-                command, test_directory, env, timeout, stepcurrent_key, output
+                command, test_directory, env, stepcurrent_key, output
             )
         else:
             ret_code, was_rerun = retry_shell(
@@ -638,7 +625,6 @@ def run_test(
                 stdout=output,
                 stderr=output,
                 env=env,
-                timeout=timeout,
                 retries=num_retries,
             )
 
@@ -659,7 +645,7 @@ def run_test(
 
 
 def run_test_continue_through_error(
-    command, test_directory, env, timeout, stepcurrent_key, output
+    command, test_directory, env, stepcurrent_key, output
 ):
     # Run the test with -x to stop at first failure. Try again, skipping the
     # previously run tests, repeating this until there is a test that fails 3
@@ -679,7 +665,6 @@ def run_test_continue_through_error(
             stdout=output,
             stderr=output,
             env=env,
-            timeout=timeout,
         )
         ret_code = 0 if ret_code == 5 or ret_code == 4 else ret_code
         if ret_code == 0:
@@ -1644,6 +1629,7 @@ def check_pip_packages() -> None:
         "pytest-shard",
         "pytest-flakefinder",
         "pytest-xdist",
+        "pytest-timeout",
     ]
     installed_packages = [i.key for i in pkg_resources.working_set]
     for package in packages:

@@ -177,6 +177,11 @@ pytest-rerunfailures>=10.3
 #Pinned versions:
 #test that import:
 
+pytest-timeout==2.2.0
+#Description: plugin for timeouts for pytest
+#Pinned versions:
+#test that import:
+
 #pytest-benchmark
 #Description: fixture for benchmarking code
 #Pinned versions: 3.2.3
