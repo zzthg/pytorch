@@ -105,8 +105,7 @@ static __device__ __inline__ void copy_chunk_with_pad(
   int64_t max_chunk_size,
   int64_t actual_chunk_size,
   int64_t thread_idx,
-  int64_t num_threads,
-  uint4 default_value
+  int64_t num_threads
 ) {
   if (max_chunk_size < num_threads) {
     if (thread_idx < actual_chunk_size) {
@@ -116,6 +115,7 @@ static __device__ __inline__ void copy_chunk_with_pad(
     }
     return;
   }
+  uint4 zero = initialize();
   int64_t align_off, aligned_size;
   get_aligned_region(dst, actual_chunk_size, BYTES_PER_THREAD, align_off, aligned_size);
   int64_t align_end = align_off + aligned_size;
@@ -124,7 +124,7 @@ static __device__ __inline__ void copy_chunk_with_pad(
     i < align_end;
     i += num_threads * BYTES_PER_THREAD
   ) {
-    uint4 val = default_value;
+    uint4 val = zero;
     if(detail::is_aligned(src + i, BYTES_PER_THREAD)) {
       stream_load128(val, src + i);
     } else {
@@ -150,7 +150,15 @@ static __device__ __inline__ void copy_chunk_with_pad(
   }
 }
 
-static __global__ void unflatten_cat_with_pad_kernel(
+/*
+    char **src: address of vector<char*>. src[i] points to the i-th tensor's data.
+        Each tensor has a layout of leading_dim * dim * tailing_dim
+    char *dst: address of the destination tensor.
+    num_chunks: split dim to num_chunk
+
+*/
+
+static __global__ void resize_cat_cuda_kernel(
   char** src,
   int64_t num_chunks,
   char* dst,
@@ -159,19 +167,15 @@ static __global__ void unflatten_cat_with_pad_kernel(
   // int64_t* cum_sum_num_bytes_per_chunk,
   // int64_t num_bytes_per_chunk,
   int64_t num_blocks_per_chunk,
-  int64_t* tensor_bytes,
-  int64_t chunk_stride
+  int64_t* tensor_bytes
+  // int64_t chunk_stride
   // int64_t num_slice
 ) {
-
-
-
   tensors = tensors + blockIdx.y * num_slice;
   // out = out + blockIdx.y * num_bytes_per_chunk * num_chunks;
   // const int64_t slice_offset =
   const int64_t chunk_offset = blockIdx.x % num_blocks_per_chunk;
   const int64_t tensor_idx = chunk_offset_to_tensor_idx[chunk_offset];
-  const uint4 zero = initialize();
   for (int64_t chunk_idx = blockIdx.x / num_blocks_per_chunk; chunk_idx < num_chunks; chunk_idx += chunk_stride) {
     // const int64_t chunk_begin = cum_sum_num_bytes_per_chunk[tensor_idx];
     // const int64_t theory_chunk_num_bytes = cum_sum_num_bytes_per_chunk[tensor_idx+1] - chunk_begin;
@@ -189,14 +193,13 @@ static __global__ void unflatten_cat_with_pad_kernel(
     const int64_t src_off = chunk_idx * theory_chunk_num_bytes;
     char* dst_pointer = reinterpret_cast<char*>(out) + dst_off;
     const char* src_pointer = reinterpret_cast<char*>(tensors[tensor_idx]) + src_off;
-    detail::copy_chunk_with_pad(
+    copy_chunk_with_pad(
       dst_pointer,
       src_pointer,
       theory_chunk_num_bytes,
       actual_num_bytes,
       thread_idx,
-      num_threads,
-      zero
+      num_threads
     );
   }
 }
@@ -223,7 +226,7 @@ void assert_leading_dimension_matches(
     for(const auto j : c10::irange(dim)) {
       TORCH_CHECK(
         tensor.size(j) == leading_dim_sizes[j],
-        "unflatten_cat_with_pad() has invalid args: tensors should have same sizes in the first dim dimensions"
+        "resize_cat_cuda() has invalid args: tensors should have same sizes in the first dim dimensions"
       );
     }
   }
@@ -251,7 +254,12 @@ void assert_leading_dimension_matches(
 //    chunk_offset = blockIdx.x % num_blocks_per_chunk
 //    tensor_idx = chunk_offset_to_tensor_idx[chunk_offset]
 // TODO: Rename as pad_reshape_cat
-void unflatten_cat_with_pad_cuda(
+
+
+
+
+// Along `dim` dimension, resizes each `tensor` as a multiplier of `factor` and cats all tensors.
+void resize_cat_cuda(
   std::vector<at::Tensor> tensors,
   int64_t dim,
   int64_t factor,
@@ -261,7 +269,7 @@ void unflatten_cat_with_pad_cuda(
   auto num_tensors = tensors.size();
   TORCH_CHECK(
     out.is_cuda() && out.is_non_overlapping_and_dense(),
-    "unflatten_cat_with_pad_cuda() error: invalid out tensor"
+    "resize_cat_cuda() error: invalid out tensor"
   );
   assert_leading_dimension_matches(tensors, dim);
   auto leading_numel = c10::multiply_integers(tensors[0].sizes().slice(0, dim));
@@ -274,7 +282,7 @@ void unflatten_cat_with_pad_cuda(
     at::Tensor tensor = tensors[i];
     TORCH_CHECK(
       tensor.is_cuda() && tensor.is_non_overlapping_and_dense(),
-      "unflatten_cat_with_pad_cuda() error: invalid out tensor"
+      "resize_cat_cuda() error: invalid out tensor"
     );
     auto sizes = tensor.sizes();
     const int64_t size_along_dim = sizes[dim];
@@ -313,7 +321,7 @@ void unflatten_cat_with_pad_cuda(
   }
   dim3 blocks(num_blocks_per_chunk * (factor / chunks_per_block), leading_numel, 1);
   dim3 threads(BLOCK_SIZE, 1, 1);
-  unflatten_cat_with_pad_kernel<<<blocks, threads, 0, at::cuda::getCurrentCUDAStream()>>>(
+  resize_cat_cuda_kernel<<<blocks, threads, 0, at::cuda::getCurrentCUDAStream()>>>(
       reinterpret_cast<void**>(packed.second[0]),
       factor,
       out.data_ptr(),

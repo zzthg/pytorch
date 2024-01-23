@@ -7,7 +7,7 @@ void fsdpAllGatherCopyOut(
     std::vector<at::Tensor> params,
     at::Tensor allGatherRes,
     int64_t worldSize);
-void unflatten_cat_with_pad_cuda(
+void resize_cat_cuda_cuda(
     std::vector<at::Tensor> tensors,
     int64_t dim,
     int64_t factor,
@@ -28,14 +28,14 @@ void fsdp_all_gather_copy_out(
 #endif
 }
 
-void unflatten_cat_with_pad(
+void resize_cat_cuda(
   std::vector<at::Tensor> tensors,
   int64_t dim,
   int64_t factor,
   at::Tensor out
 ) {
 #ifdef USE_CUDA
-  return unflatten_cat_with_pad_cuda(tensors, dim, factor, out);
+  return resize_cat_cuda_cuda(tensors, dim, factor, out);
 #else
   C10_THROW_ERROR(NotImplementedError, "Not implemented for CPU");
 #endif
@@ -52,10 +52,10 @@ TORCH_LIBRARY_FRAGMENT(c10d, m) {
           ::fsdp_all_gather_copy_out),
       {at::Tag::pt2_compliant_tag});
   m.def(
-    "unflatten_cat_with_pad("
+    "resize_cat_cuda("
     "Tensor[] tensors, int dim, int factor, Tensor out) -> ()",
     torch::dispatch(
       c10::DispatchKey::CompositeExplicitAutograd,
-      ::unflatten_cat_with_pad),
+      ::resize_cat_cuda),
       {at::Tag::pt2_compliant_tag});
 }
