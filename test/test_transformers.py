@@ -41,8 +41,6 @@ from torch.testing._internal.common_cuda import (
     PLATFORM_SUPPORTS_FUSED_ATTENTION
 )
 
-if TEST_FAIRSEQ:
-    import fairseq.models.transformer as fairseq_transformer
 
 SdpaShape = namedtuple('Sdpa_Shape', ['batch', 'num_heads', 'seq_len', 'head_dim'])
 Tolerances = namedtuple('Tolerances', ['atol', 'rtol'])
@@ -3215,7 +3213,7 @@ class TestSDPACudaOnly(NNTestCase):
         self.assertEqual(value.grad, value_ref.grad.to(value.grad.dtype),
                          atol=grad_v_ref_atol, rtol=grad_v_ref_rtol)
 
-class TestAttnMasks(NNTestCase):
+class TestAttnBias(NNTestCase):
 
     def run_test(self, device, compile, make_q, make_kv, attn_bias=None,
                  forw_tolerances: Optional[Tolerances] = None, grad_tolerances: Optional[Tolerances] = None):
@@ -3289,7 +3287,6 @@ class TestAttnMasks(NNTestCase):
 
         self.run_test(device, False, make_q_tensor, make_kv_tensor, attn_bias, forw_tol, grad_tol)
 
-    @unittest.skip("This test fails on some parameters and on some CI machines")
     @parametrize("causal_variant", [CausalVariant.UPPER_LEFT, CausalVariant.LOWER_RIGHT])
     @parametrize(
         "shape",
@@ -3359,11 +3356,13 @@ if NOTEST_CPU:
 else:
     device_types = ("cpu", "cuda")
 
+torch._dynamo.allow_in_graph(torch._C._SDPAParams)
+
 instantiate_device_type_tests(TestTransformers, globals(), only_for=device_types)
 instantiate_device_type_tests(TestSDPAFailureModes, globals(), only_for=device_types)
 instantiate_device_type_tests(TestSDPA, globals(), only_for=device_types)
 instantiate_device_type_tests(TestSDPACudaOnly, globals(), only_for=("cuda"))
-instantiate_device_type_tests(TestAttnMasks, globals(), only_for=device_types)
+instantiate_device_type_tests(TestAttnBias, globals(), only_for=device_types)
 
 if __name__ == '__main__':
     run_tests()

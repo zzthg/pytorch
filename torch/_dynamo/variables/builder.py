@@ -1520,12 +1520,19 @@ def wrap_fx_proxy_cls(
     ]:
         proxy.node.meta["example_value"] = example_value
         return ConstantVariable.create(example_value, **options)
+    elif isinstance(example_value, bool) and proxy.node.target in [
+        torch.backends.cuda.can_use_flash_attention,
+        torch.backends.cuda.can_use_efficient_attention,
+    ]:
+        proxy.node.meta["example_value"] = example_value
+        return ConstantVariable.create(example_value, **options)
     elif isinstance(example_value, torch.backends.cuda.SDPAParams):
         from .sdpa import SDPAParamsVariable
 
         proxy.node.meta["example_value"] = example_value
         return SDPAParamsVariable(proxy, **options)
     else:
+        breakpoint()
         unimplemented(
             "torch.* op returned non-Tensor "
             + f"{typestr(example_value)} {proxy.node.op} {proxy.node.target}"
