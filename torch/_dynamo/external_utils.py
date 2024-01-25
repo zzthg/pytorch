@@ -70,3 +70,11 @@ def call_backward(backward_fn, saved_tensors, *args):
         grads = (grads,)
 
     return grads
+
+
+def foreach(fn, xs, ys):
+    out = []
+    for x, y in zip(xs, ys):
+        out = fn(x, y)
+
+    return out
