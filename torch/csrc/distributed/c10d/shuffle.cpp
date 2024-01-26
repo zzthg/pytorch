@@ -3,59 +3,35 @@
 // TODO: Think about file name. Should it be shuffle.cpp or something else?
 
 #ifdef USE_CUDA
-void fsdpAllGatherCopyOut(
-    std::vector<at::Tensor> params,
-    at::Tensor allGatherRes,
-    int64_t worldSize);
-void resize_cat_cuda_cuda(
+void resize_cat_cuda(
     std::vector<at::Tensor> tensors,
     int64_t dim,
-    int64_t factor,
+    int64_t num_chunks,
     at::Tensor out
 );
 #endif
 
 namespace {
-
-void fsdp_all_gather_copy_out(
-    std::vector<at::Tensor> params,
-    at::Tensor all_gather_res,
-    int64_t world_size) {
-#ifdef USE_CUDA
-  return fsdpAllGatherCopyOut(params, all_gather_res, world_size);
-#else
-  C10_THROW_ERROR(NotImplementedError, "Not implemented for CPU");
-#endif
-}
-
-void resize_cat_cuda(
+void resize_cat(
   std::vector<at::Tensor> tensors,
   int64_t dim,
-  int64_t factor,
+  int64_t num_chunks,
   at::Tensor out
 ) {
 #ifdef USE_CUDA
-  return resize_cat_cuda_cuda(tensors, dim, factor, out);
+  return resize_cat_cuda(tensors, dim, num_chunks, out);
 #else
   C10_THROW_ERROR(NotImplementedError, "Not implemented for CPU");
 #endif
 }
-
 } // namespace
 
 TORCH_LIBRARY_FRAGMENT(c10d, m) {
   m.def(
-      "fsdp_all_gather_copy_out("
-      "Tensor[] params, Tensor all_gather_res, int world_size) -> ()",
-      torch::dispatch(
-          c10::DispatchKey::CompositeExplicitAutograd,
-          ::fsdp_all_gather_copy_out),
-      {at::Tag::pt2_compliant_tag});
-  m.def(
-    "resize_cat_cuda("
-    "Tensor[] tensors, int dim, int factor, Tensor out) -> ()",
+    "resize_cat("
+    "Tensor[] tensors, int dim, int num_chunks, Tensor out) -> ()",
     torch::dispatch(
       c10::DispatchKey::CompositeExplicitAutograd,
-      ::resize_cat_cuda),
+      ::resize_cat),
       {at::Tag::pt2_compliant_tag});
 }

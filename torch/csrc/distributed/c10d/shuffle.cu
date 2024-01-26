@@ -5,10 +5,8 @@
 #include <iostream>
 
 constexpr int64_t BYTES_PER_THREAD = 16;
-constexpr int64_t MAX_NUM_THREADS = 1024;
-constexpr int64_t MIN_NUM_THREADS = 128;
-constexpr int64_t WARP_SIZE = 32;
 constexpr int64_t BLOCK_SIZE = 512;
+constexpr int64_t TILE_SIZE = BYTES_PER_THREAD * BLOCK_SIZE;
 
 namespace detail {
 template <typename T>
@@ -150,64 +148,56 @@ static __device__ __inline__ void copy_chunk_with_pad(
   }
 }
 
-/*
-    char **src: address of vector<char*>. src[i] points to the i-th tensor's data.
-        Each tensor has a layout of leading_dim * dim * tailing_dim
-    char *dst: address of the destination tensor.
-    num_chunks: split dim to num_chunk
-
-*/
-
 static __global__ void resize_cat_cuda_kernel(
   char** src,
-  int64_t num_chunks,
   char* dst,
-  int64_t* chunk_offset_to_tensor_idx,
-  int64_t* cum_sum_blocks_per_chunk,
-  // int64_t* cum_sum_num_bytes_per_chunk,
-  // int64_t num_bytes_per_chunk,
-  int64_t num_blocks_per_chunk,
-  int64_t* tensor_bytes
-  // int64_t chunk_stride
-  // int64_t num_slice
-) {
-  tensors = tensors + blockIdx.y * num_slice;
-  // out = out + blockIdx.y * num_bytes_per_chunk * num_chunks;
-  // const int64_t slice_offset =
-  const int64_t chunk_offset = blockIdx.x % num_blocks_per_chunk;
-  const int64_t tensor_idx = chunk_offset_to_tensor_idx[chunk_offset];
-  for (int64_t chunk_idx = blockIdx.x / num_blocks_per_chunk; chunk_idx < num_chunks; chunk_idx += chunk_stride) {
-    // const int64_t chunk_begin = cum_sum_num_bytes_per_chunk[tensor_idx];
-    // const int64_t theory_chunk_num_bytes = cum_sum_num_bytes_per_chunk[tensor_idx+1] - chunk_begin;
-    const int64_t actual_num_bytes = minInt64(
-      theory_chunk_num_bytes,
-      maxInt64(tensor_bytes[tensor_idx] - chunk_idx * theory_chunk_num_bytes, 0)
-    );
-    if (actual_num_bytes == 0) {
-      return;
-    }
-    const int64_t chunk_block_count = cum_sum_blocks_per_chunk[tensor_idx + 1] - cum_sum_blocks_per_chunk[tensor_idx];
-    const int64_t num_threads = chunk_block_count * blockDim.x;
-    const int64_t thread_idx = (chunk_offset - cum_sum_blocks_per_chunk[tensor_idx]) * blockDim.x + threadIdx.x;
-    const int64_t dst_off = chunk_idx * num_bytes_per_chunk + chunk_begin;
-    const int64_t src_off = chunk_idx * theory_chunk_num_bytes;
-    char* dst_pointer = reinterpret_cast<char*>(out) + dst_off;
-    const char* src_pointer = reinterpret_cast<char*>(tensors[tensor_idx]) + src_off;
-    copy_chunk_with_pad(
-      dst_pointer,
-      src_pointer,
-      theory_chunk_num_bytes,
-      actual_num_bytes,
-      thread_idx,
-      num_threads
-    );
+  int64_t* block_idx_to_tensor_idx,
+  int64_t* block_idx_to_start_tensor_bytes,
+  int64_t* start_block_idx_per_tensor_chunk,
+  int64_t* actual_tensor_sizes,
+  int64_t* pad_tensor_chunk_sizes,
+  int64_t* num_blocks_per_tensor_chunk,
+  int64_t slice_size,
+  int64_t chunk_size) {
+  const int64_t slice_idx = blockIdx.z;
+  const int64_t chunk_idx = blockIdx.y;
+  const int64_t tensor_idx = block_idx_to_tensor_idx[blockIdx.x];
+  const int64_t tile_idx = blockIdx.x - start_block_idx_per_tensor_chunk[tensor_idx];
+  // Number of threads for the `tensor_idx`-th tensor chunk.
+  const int64_t num_threads = num_blocks_per_tensor_chunk[tensor_idx] * BLOCK_SIZE;
+  const char* src_addr = src[tensor_idx]
+      + slice_idx * actual_tensor_sizes[tensor_idx]
+      + chunk_idx * pad_tensor_chunk_sizes[tensor_idx]
+      + tile_idx * TILE_SIZE;
+  char* dst_addr = dst
+      + slice_idx * slice_size
+      + chunk_idx  * chunk_size
+      + block_idx_to_start_tensor_bytes[tensor_idx]
+      + tile_idx * TILE_SIZE;
+  const int64_t actual_copy_size = minInt64(
+    TILE_SIZE,
+    maxInt64(
+      actual_tensor_sizes[tensor_idx]
+        -(chunk_idx * pad_tensor_chunk_sizes[tensor_idx] + tile_idx * TILE_SIZE),
+      0)
+  );
+  if (actual_copy_size == 0) {
+    return;
   }
+  copy_chunk_with_pad(
+    dst_addr,
+    src_addr,
+    pad_tensor_chunk_sizes[tensor_idx],
+    actual_copy_size,
+    threadIdx.x,
+    num_threads
+  );
 }
 } // namespace detail
 
 void assert_leading_dimension_matches(
   std::vector<at::Tensor> tensors,
-  int64_t dim
+  uint64_t dim
 ) {
   const auto num_tensors = tensors.size();
   TORCH_CHECK(
@@ -232,37 +222,10 @@ void assert_leading_dimension_matches(
   }
 }
 
-
-
-
-// First, tensors can be viewed as a list of 3-d tensor:
-//  For a given tensor, we can split dimensions as [:dim], [dim], [dim+1:].
-//  These three parts can be treated as leading_numel, dim, tailing_numel, respectively.
-//  For all tensors, we have num_tensors, leading_numel, dim, tailing_numel
-// Second,
-//  input_tensors = []
-//  for i in range(num_tensors):
-//    for j in range(leading_numel):
-//      input_tensors[j*num_tensors + i] = tensors[i][j] // input_tensors[j][i] have shape [dim x tailing_numel]
-// Third,
-//  For each j in range(leading_numel), there are num_tensors tensors and num_tensors * dim * tailing_numel (slice_numel) elements in total
-//  We can compute num_blocks_per_slice according to slice_numel.
-//  blockIdx.x =>
-//    blockIdx.y = blockIdx.x / num_blocks_per_slice
-//    blockIdx.x = blockIdx.x % num_blocks_per_slice
-//    chunk_idx = blockIdx.x / num_blocks_per_chunk
-//    chunk_offset = blockIdx.x % num_blocks_per_chunk
-//    tensor_idx = chunk_offset_to_tensor_idx[chunk_offset]
-// TODO: Rename as pad_reshape_cat
-
-
-
-
-// Along `dim` dimension, resizes each `tensor` as a multiplier of `factor` and cats all tensors.
 void resize_cat_cuda(
   std::vector<at::Tensor> tensors,
   int64_t dim,
-  int64_t factor,
+  int64_t num_chunks,
   at::Tensor out
 ) {
   const auto device = out.device();
@@ -271,15 +234,21 @@ void resize_cat_cuda(
     out.is_cuda() && out.is_non_overlapping_and_dense(),
     "resize_cat_cuda() error: invalid out tensor"
   );
-  assert_leading_dimension_matches(tensors, dim);
-  auto leading_numel = c10::multiply_integers(tensors[0].sizes().slice(0, dim));
-  // tensor_pointers has layout of (leading_numel, num_tensors) where each element is a pointer to a tensor of layout size_along_dim x tailing_numel
-  std::vector<int64_t> tensor_pointers(num_tensors * leading_numel, 0);
-  std::vector<int64_t> tensor_bytes_per_slice;
-  std::vector<int64_t> tensor_idx_to_num_bytes_per_chunk;
-  std::vector<int64_t> cum_sum_num_bytes_per_chunk{0};
+  assert_leading_dimension_matches(tensors, (uint64_t)dim);
+  int64_t leading_dim = 1;
+  if (dim > 0) {
+    leading_dim = c10::multiply_integers(tensors[0].sizes().slice(0, dim));
+  }
+  std::vector<int64_t> pad_tensor_chunk_sizes;
+  std::vector<int64_t> num_blocks_per_tensor_chunk;
+  std::vector<int64_t> block_idx_to_tensor_idx;
+  std::vector<int64_t> start_block_idx_per_tensor_chunk{0};
+  std::vector<int64_t> actual_tensor_sizes;
+  std::vector<int64_t> block_idx_to_start_tensor_bytes{0};
+  std::vector<int64_t> srcs;
   for (const auto i : c10::irange(num_tensors)) {
     at::Tensor tensor = tensors[i];
+    srcs.push_back(reinterpret_cast<int64_t>(tensor.data_ptr()));
     TORCH_CHECK(
       tensor.is_cuda() && tensor.is_non_overlapping_and_dense(),
       "resize_cat_cuda() error: invalid out tensor"
@@ -287,52 +256,39 @@ void resize_cat_cuda(
     auto sizes = tensor.sizes();
     const int64_t size_along_dim = sizes[dim];
     int64_t tailing_numel = 1;
-    if(sizes.size() > dim + 1) {
+    if(sizes.size() > (uint64_t)dim + 1) {
       tailing_numel = c10::multiply_integers(sizes.slice(dim+1, sizes.size()-dim-1));
     }
-    const int64_t pad_size_along_dim = div_up(size_along_dim, factor) * factor;
-    const int64_t num_bytes_per_chunk = pad_size_along_dim * tailing_numel * tensor.element_size() / factor;
-    const int64_t base_pointer = reinterpret_cast<int64_t>(tensor.data_ptr());
-    tensor_bytes_per_slice.push_back(tailing_numel * size_along_dim * tensor.element_size());
-    for (const auto j : c10::irange(leading_numel)) {
-      tensor_pointers[j*num_tensors + i] = base_pointer + j * tensor_bytes_per_slice.back();
-    }
-    tensor_idx_to_num_bytes_per_chunk.push_back(num_bytes_per_chunk);
-    cum_sum_num_bytes_per_chunk.push_back(cum_sum_num_bytes_per_chunk[i] + num_bytes_per_chunk);
+    const int64_t pad_size_along_dim = detail::div_up(size_along_dim, num_chunks) * num_chunks;
+    const int64_t pad_tensor_chunk_size = pad_size_along_dim * tailing_numel * tensor.element_size() / num_chunks;
+    pad_tensor_chunk_sizes.push_back(pad_tensor_chunk_size);
+    // Number of blocks required to process this tensor chunk.
+    const int64_t num_blocks = detail::div_up(pad_tensor_chunk_size, TILE_SIZE);
+    num_blocks_per_tensor_chunk.push_back(num_blocks);
+    start_block_idx_per_tensor_chunk.push_back(start_block_idx_per_tensor_chunk.back() + num_blocks);
+    block_idx_to_tensor_idx.insert(block_idx_to_tensor_idx.end(), num_blocks, i);
+    actual_tensor_sizes.push_back(size_along_dim * tailing_numel * tensor.element_size());
+    block_idx_to_start_tensor_bytes.push_back(block_idx_to_start_tensor_bytes.back() + pad_tensor_chunk_size);
   }
-  constexpr int64_t max_active_blocks = 32 * 132;
-  constexpr int64_t sm_oversub = 2;
-  std::vector<int64_t> chunk_offset_to_tensor_idx;
-  std::vector<int64_t> cum_sum_blocks_per_chunk{0};
-  for (const auto i : c10::irange(num_tensors)) {
-    int64_t num_blocks_per_chunk = div_up(tensor_idx_to_num_bytes_per_chunk[i], BLOCK_SIZE * BYTES_PER_THREAD);
-    chunk_offset_to_tensor_idx.insert(chunk_offset_to_tensor_idx.end(), num_blocks_per_chunk, i);
-    cum_sum_blocks_per_chunk.push_back(cum_sum_blocks_per_chunk.back() + num_blocks_per_chunk);
-  }
-  const auto num_blocks_per_chunk = cum_sum_blocks_per_chunk.back();
-  auto packed = pack(
-    {tensor_pointers, chunk_offset_to_tensor_idx, cum_sum_num_bytes_per_chunk, cum_sum_num_bytes_per_chunk, tensor_bytes_per_slice}, device
+  const int64_t num_blocks_per_chunk = start_block_idx_per_tensor_chunk.back();
+  const int64_t chunk_size = pad_tensor_chunk_sizes.back();
+  const int64_t slice_size = num_chunks * chunk_size;
+  auto packed = detail::pack(
+    {srcs, block_idx_to_tensor_idx, block_idx_to_start_tensor_bytes, start_block_idx_per_tensor_chunk, actual_tensor_sizes, pad_tensor_chunk_sizes, num_blocks_per_tensor_chunk}, device
   );
-  int64_t chunks_per_block = 1;
-  while (num_blocks_per_chunk * (factor / chunks_per_block) * leading_numel >
-          max_active_blocks * sm_oversub &&
-        chunks_per_block < factor) {
-    ++chunks_per_block;
-  }
-  dim3 blocks(num_blocks_per_chunk * (factor / chunks_per_block), leading_numel, 1);
+  dim3 blocks(num_blocks_per_chunk, num_chunks, leading_dim);
   dim3 threads(BLOCK_SIZE, 1, 1);
-  resize_cat_cuda_kernel<<<blocks, threads, 0, at::cuda::getCurrentCUDAStream()>>>(
-      reinterpret_cast<void**>(packed.second[0]),
-      factor,
-      out.data_ptr(),
-      /*chunk_offset_to_tensor_idx=*/packed.second[1],
-      /*cum_sum_blocks_per_chunk=*/packed.second[2],
-      /*cum_sum_num_bytes_per_chunk=*/packed.second[3],
-      cum_sum_num_bytes_per_chunk.back(),
-      num_blocks_per_chunk,
-      /*tensor_bytes_per_slice=*/packed.second[4],
-      factor / chunks_per_block,
-      leading_numel
+  detail::resize_cat_cuda_kernel<<<blocks, threads, 0, at::cuda::getCurrentCUDAStream()>>>(
+    /*srcs=*/reinterpret_cast<char**>(packed.second[0]),
+    reinterpret_cast<char*>(out.data_ptr()),
+    /*block_idx_to_tensor_idx=*/packed.second[1],
+    /*block_idx_to_start_tensor_bytes=*/packed.second[2],
+    /*start_block_idx_per_tensor_chunk=*/packed.second[3],
+    /*actual_tensor_sizes=*/packed.second[4],
+    /*pad_tensor_chunk_sizes=*/packed.second[5],
+    /*num_blocks_per_tensor_chunk=*/packed.second[6],
+    slice_size,
+    chunk_size
   );
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
