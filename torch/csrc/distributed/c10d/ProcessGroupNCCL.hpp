@@ -689,10 +689,6 @@ class TORCH_API ProcessGroupNCCL : public Backend {
   bool dumpDebuggingInfo();
 
  private:
-  int globalRankStart;
-  int globalRankStride;
-
- private:
   // Helper that encapsulates work shared across all collective communication
   // primitives.  The callbacks have the following signatures:
   //
@@ -1064,6 +1060,14 @@ class TORCH_API ProcessGroupNCCL : public Backend {
 
   // Counting for the sequential number of NCCL collective call.
   uint64_t seq_{0};
+
+  // the sequential number of the last colletive enqueued into workMetaList_
+  // This is useful for indentifying a rank that has not join a collective
+  uint64_t lastEnqueuedSeq_;
+
+  // the sequential number of the last colletive completed marked by
+  // the watchdog thread
+  uint64_t lastCompletedSeq_;
 
   std::exception_ptr watchDogException_ = nullptr;
 

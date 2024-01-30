@@ -1197,8 +1197,6 @@ class ProcessGroupNCCLTest(MultiProcessTestCase):
         with self.assertRaises(dist.DistBackendError):
             pg.allreduce([t])
 
-<<<<<<< HEAD
-=======
     @requires_nccl()
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "NCCL test requires 2+ GPUs")
     def test_terminate_before_destruct_pg(self):
@@ -1363,7 +1361,6 @@ class ProcessGroupNCCLTest(MultiProcessTestCase):
         time.sleep(2)
         dist.destroy_process_group()
 
->>>>>>> 893dcac068f ([c10d] explicitly abort communicators in destroy_process_group call (#119250))
     def _check_nccl_timeout(self, expected_timeout):
         pg = dist.distributed_c10d._get_default_group()
         options = pg._get_backend(torch.device(f"cuda:{self.rank}")).options
