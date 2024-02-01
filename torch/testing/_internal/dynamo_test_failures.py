@@ -2157,7 +2157,6 @@ dynamo_expected_failures = {
     "TestQuantizePT2E.test_save_load",  # test_quantization
     "TestPT2ERepresentation.test_qdq_per_channel",  # test_quantization
     "TestQuantizeFxOps.test_prelu",  # test_quantization
-    "TestDynamicQuantizedOps.test_dynamic_conv1d",  # test_quantization
     "TestFXNumericSuiteCoreAPIs.test_match_activations_fqn",  # test_quantization
     "TestQuantizeFx.test_assert_on_size_after_quant_layer",  # test_quantization
     "TestQuantizedConv.test_qconv1d_pt2e",  # test_quantization
