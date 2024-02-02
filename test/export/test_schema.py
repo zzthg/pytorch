@@ -15,7 +15,7 @@ class TestSchema(TestCase):
         msg = """
 Detected an invalidated change to export schema. Please run the following script to update the schema:
 Example(s):
-    python scripts/export/update_schema.py --prefix <path_to_torch_development_diretory>
+    python scripts/export/update_schema.py --prefix <absolute_path_to_torch_development_diretory>
         """
 
         if IS_FBCODE:

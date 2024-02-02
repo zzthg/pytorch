@@ -7,7 +7,7 @@ from yaml import dump, Dumper
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="update_schema")
     parser.add_argument(
-        "--prefix", type=str, required=True, help="The root of pytorch directory."
+        "--prefix", type=str, required=True, help="The absolute path to the root of pytorch directory."
     )
     parser.add_argument(
         "--dry-run",
@@ -40,7 +40,10 @@ if __name__ == "__main__":
     else:
         assert (
             args.force_unsafe
-        ), "Existing schema yaml file not found, please use --force-unsafe to try again."
+        ), (
+            "Existing schema yaml file not found, please use --force-unsafe to try again."
+            "Make sure you're using the absolute path to the pytorch directory."
+        )
 
     next_version, reason = schema_check.check(commit, args.force_unsafe)
 
