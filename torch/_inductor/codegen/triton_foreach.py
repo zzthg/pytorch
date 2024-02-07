@@ -204,7 +204,8 @@ class ForeachKernel(Kernel):
                 code.splice(f"XBLOCK: tl.constexpr = {self.block_size_2d}")
                 code.splice(f"YBLOCK: tl.constexpr = {self.block_size_2d}")
             else:
-                code.splice(f"XBLOCK: tl.constexpr = {self.block_size_1d}")
+                code.splice("XBLOCK: tl.constexpr = 256")
+                code.splice("RBLOCK: tl.constexpr = 256")
 
             for sub_kernel in self.sub_kernels:
                 assert len(sub_kernel.numels) <= 3
@@ -217,6 +218,7 @@ class ForeachKernel(Kernel):
                         code.splice(f"xnumel = {sub_kernel.numels[1]}")
                     else:
                         code.splice(f"xnumel = {sub_kernel.numels[0]}")
+                        code.splice(f"rnumel = {sub_kernel.numels[0]}")
 
                     sub_kernel.codegen_body()
                     code.splice(sub_kernel.body)
@@ -225,6 +227,7 @@ class ForeachKernel(Kernel):
             with code.indent():
                 code.splice("pass")
 
+        print(code.getvalue())
         return code.getvalue()
 
     def call_kernel(self, code, name: str):

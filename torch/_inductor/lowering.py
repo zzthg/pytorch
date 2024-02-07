@@ -5251,6 +5251,14 @@ register_foreach_pointwise(aten._foreach_sign, sign)
 register_foreach_pointwise(aten._foreach_copy, copy)
 
 
+# TODO: handle all ords
+def vector_norm(x, ord=2):
+    return reduce_amax(abs(x))
+
+
+register_foreach_pointwise(aten._foreach_norm, vector_norm)
+
+
 # these are only encountered as outputs of the graph
 # reinplacing epilogue copies improves compile time
 # by removing extra buffers sent to the scheduler.
