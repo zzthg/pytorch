@@ -76,6 +76,10 @@ def _create_nested_fn(
 
 
 class BaseUserFunctionVariable(VariableTracker):
+    def __init__(self, force_inline: Optional[bool] = None, **kwargs):
+        super().__init__(**kwargs)
+        self.force_inline = force_inline
+
     def get_filename(self):
         return self.get_code().co_filename
 
@@ -104,6 +108,16 @@ class BaseUserFunctionVariable(VariableTracker):
 
     def closure_vars(self, tx):
         return {}
+
+    def has_self(self):
+        raise NotImplementedError()
+
+    def should_force_inline(self) -> Optional[bool]:
+        # Force this function to be considered inlinable, despite skipfiles.
+        # One use case is for autograd functions: an autograd.Function defined
+        # in the torch/ namespace will probably be inlineable, and its backward
+        # function from produce_trampoline_autograd_apply should also be inlineable.
+        return self.force_inline
 
 
 class UserFunctionVariable(BaseUserFunctionVariable):

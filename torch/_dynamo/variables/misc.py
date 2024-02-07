@@ -364,14 +364,15 @@ class AutogradFunctionVariable(VariableTracker):
         ctx = AutogradFunctionContextVariable.create(tx)
         args = [ctx, *args]
         if isinstance(fn, types.FunctionType):
-            return variables.UserFunctionVariable(fn, source=source).call_function(
-                tx, args, kwargs
-            )
+            return variables.UserFunctionVariable(
+                fn, source=source, force_inline=True
+            ).call_function(tx, args, kwargs)
         elif isinstance(fn, types.MethodType):
             return variables.UserMethodVariable(
                 fn.__func__,
                 variables.UserDefinedClassVariable(self.fn_cls),
                 source=source,
+                force_inline=True,
             ).call_function(tx, args, kwargs)
         else:
             unimplemented(
