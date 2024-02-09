@@ -3,6 +3,13 @@ import sys
 
 from typing import Optional
 
+import torch
+
+
+def is_fbcode():
+    return not hasattr(torch.version, "git_version")
+
+
 # [@compile_ignored: debug] Uses z3 for validating the guard optimizations transformations.
 translation_validation = (
     os.environ.get("TORCHDYNAMO_TRANSLATION_VALIDATION", "0") == "1"
@@ -52,7 +59,7 @@ validate_shape_env_version_key = False
 # issued (as we test if we've hit the limit on-the-fly, whereas we may
 # do further simplifications at final guard issuance time that make guards
 # irrelevant.)
-symbol_guard_limit_before_specialize: Optional[int] = None
+symbol_guard_limit_before_specialize: Optional[int] = None if is_fbcode() else 100
 
 from torch.utils._config_module import install_config_module
 
