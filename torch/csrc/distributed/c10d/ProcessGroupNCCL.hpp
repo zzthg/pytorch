@@ -93,6 +93,12 @@ static std::vector<std::string> TORCH_NCCL_WAIT_TIMEOUT_DUMP_MILSEC = {
 static std::vector<std::string> TORCH_NCCL_COORD_CHECK_MILSEC = {
     "TORCH_NCCL_COORD_CHECK_MILSEC"};
 
+// Whether to abort the communicators when users call destroy_process_group().
+// If yes, communicators will be aborted when destroy_process_group is called,
+// but not in destructor.
+static std::vector<std::string> TORCH_NCCL_ABORT_IN_DESTROY_PG = {
+    "TORCH_NCCL_ABORT_IN_DESTROY_PG"};
+
 constexpr const char* NCCL_BACKEND_NAME = "nccl";
 
 constexpr const char* TIMEOUT_DUMP = "timeout_dump";
@@ -574,7 +580,8 @@ class TORCH_API ProcessGroupNCCL : public Backend {
 
   // Provides an API to abort the ProcessGroup (similar to ncclCommAbort)
   // instead of relying on ProcessGroupNCCL destructor.
-  void abort(c10::optional<std::string> abortReason = c10::nullopt);
+  // return true if abort is successful, otherwise false
+  bool abort(c10::optional<std::string> abortReason = c10::nullopt);
 
   void shutdown(c10::optional<std::string> reason = c10::nullopt);
 
@@ -946,6 +953,11 @@ class TORCH_API ProcessGroupNCCL : public Backend {
   // Whether or not wait() and synchronize() are blocking operations that wait
   // for the operation to complete.
   bool blockingWait_ = false;
+
+  // Whether to abort the communicators when users call destroy_process_group().
+  // If yes, communicators will be aborted when destroy_process_group is called,
+  // but not in destructor.
+  bool abortInDestroyProcessGroup_ = false;
 
   // Whether or not to hook the cache allocator to register all allocated
   // tensors
