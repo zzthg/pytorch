@@ -142,8 +142,7 @@ static Device getATenDevice(const DLDevice& ctx, void* data) {
     case DLDeviceType::kDLOneAPI:
       return at::detail::getXPUHooks().getDeviceFromPtr(data);
     default:
-      TORCH_CHECK(
-          false, "Unsupported device_type: ", ctx.device_type);
+      TORCH_CHECK(false, "Unsupported device_type: ", ctx.device_type);
   }
 }
 
@@ -166,8 +165,7 @@ ScalarType toScalarType(const DLDataType& dtype) {
           stype = ScalarType::UInt64;
           break;
         default:
-          TORCH_CHECK(
-              false, "Unsupported kUInt bits ", dtype.bits);
+          TORCH_CHECK(false, "Unsupported kUInt bits ", dtype.bits);
       }
       break;
     case DLDataTypeCode::kDLInt:
@@ -185,8 +183,7 @@ ScalarType toScalarType(const DLDataType& dtype) {
           stype = ScalarType::Long;
           break;
         default:
-          TORCH_CHECK(
-              false, "Unsupported kInt bits ", dtype.bits);
+          TORCH_CHECK(false, "Unsupported kInt bits ", dtype.bits);
       }
       break;
     case DLDataTypeCode::kDLFloat:
@@ -201,8 +198,7 @@ ScalarType toScalarType(const DLDataType& dtype) {
           stype = ScalarType::Double;
           break;
         default:
-          TORCH_CHECK(
-              false, "Unsupported kFloat bits ", dtype.bits);
+          TORCH_CHECK(false, "Unsupported kFloat bits ", dtype.bits);
       }
       break;
     case DLDataTypeCode::kDLBfloat:
@@ -211,8 +207,7 @@ ScalarType toScalarType(const DLDataType& dtype) {
           stype = ScalarType::BFloat16;
           break;
         default:
-          TORCH_CHECK(
-              false, "Unsupported kFloat bits ", dtype.bits);
+          TORCH_CHECK(false, "Unsupported kFloat bits ", dtype.bits);
       }
       break;
     case DLDataTypeCode::kDLComplex:
@@ -227,8 +222,7 @@ ScalarType toScalarType(const DLDataType& dtype) {
           stype = ScalarType::ComplexDouble;
           break;
         default:
-          TORCH_CHECK(
-              false, "Unsupported kFloat bits ", dtype.bits);
+          TORCH_CHECK(false, "Unsupported kFloat bits ", dtype.bits);
       }
       break;
     case DLDataTypeCode::kDLBool:
@@ -237,13 +231,11 @@ ScalarType toScalarType(const DLDataType& dtype) {
           stype = ScalarType::Bool;
           break;
         default:
-          TORCH_CHECK(
-              false, "Unsupported kDLBool bits ", dtype.bits);
+          TORCH_CHECK(false, "Unsupported kDLBool bits ", dtype.bits);
       }
       break;
     default:
-      TORCH_CHECK(
-          false, "Unsupported code ", dtype.code);
+      TORCH_CHECK(false, "Unsupported code ", dtype.code);
   }
   return stype;
 }
@@ -265,7 +257,7 @@ DLManagedTensor* toDLPack(const Tensor& src) {
   // gh-83069
   auto shape = src.sizes();
   auto strides = src.strides().vec();
-  for (int i=0; i<src.dim(); i++) {
+  for (int i = 0; i < src.dim(); i++) {
     if (shape[i] < 2) {
       strides[i] = 1;
     }
@@ -323,6 +315,6 @@ Tensor fromDLPack(
       IntArrayRef(src->dl_tensor.strides, src->dl_tensor.ndim),
       deleter,
       at::device(device).dtype(stype),
-      { device });
+      {device});
 }
 } // namespace at
