@@ -1316,8 +1316,6 @@ class TritonKernel(Kernel):
         return True
 
     def set_last_usage(self, nodes):
-        if not self.inside_reduction or self.persistent_reduction:
-            return
         self.last_usage = set(
             itertools.chain.from_iterable(
                 n.last_usage for n in nodes if n is not EnableReduction
@@ -1869,7 +1867,7 @@ class TritonKernel(Kernel):
             ep = ", eviction_policy='evict_last'"
         elif not is_coalesced:
             ep = ", eviction_policy='evict_last'"
-        elif self.inside_reduction and self.range_trees[-1].is_loop:
+        else:
             if name in self.args.inplace_buffers:
                 names = set(self.args.inplace_buffers[name].other_names)
             else:
@@ -1880,8 +1878,7 @@ class TritonKernel(Kernel):
                 ep = ", eviction_policy='evict_last'"
             else:
                 ep = ", eviction_policy='evict_first'"
-        else:
-            ep = ""
+
         # "other" below is a workaround for https://github.com/openai/triton/issues/737
         # for bool, even though it's likely subject to the same bug, setting `other` leads
         # to LLVM errors so we are skipping it for now
