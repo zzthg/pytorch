@@ -789,6 +789,7 @@ class VariableBuilder:
             return ConstantVariable.create(value=value)
         # One can index a tensor with a list/tuple. Therefore, we need to
         # have a stricter match.
+        self.install_guards(GuardBuilder.TYPE_MATCH)
         self.install_guards(GuardBuilder.LIST_LENGTH)
 
         for item in value:
