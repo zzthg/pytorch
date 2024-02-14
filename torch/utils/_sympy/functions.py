@@ -109,6 +109,15 @@ class ModularIndexing(sympy.Function):
 
     @classmethod
     def eval(cls, base, divisor, modulus):
+        # See https://github.com/pytorch/pytorch/issues/119883
+        # This assert just tries to figure out how fare are we from being right
+        # We try to prove that modulus is non-negative and that we can't prove that b / d is negative
+        # This is the range when trunc and
+        if all(not isinstance(s, sympy.Wild) for s in (base, divisor, modulus)):
+            assert (modulus.is_nonnegative and
+                    not (base.is_positive and divisor.is_negative) and
+                    not (base.is_negative and divisor.is_positive)), (base, divisor, modulus, modulus.is_nonnegative, base.is_positive, base.is_negative, divisor.is_positive, divisor.is_negative)
+
         if base == 0 or modulus == 1:
             return sympy.Integer(0)
 
