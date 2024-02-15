@@ -39,9 +39,21 @@ _side_effectful_need_to_be_preserved_pre_dispatch: Set[Callable] = {
     torch.amp._exit_autocast,
 }
 
+torch.library.define("mylib::pipe_split", "() -> ()")
+
+@torch.library.impl("mylib::pipe_split", "BackendSelect")
+def pipe_split():
+    return None
+
+@torch.library.impl_abstract("mylib::pipe_split")
+def pipe_split():
+    return None
+
+
+
 _side_effectful_functions: Set[Callable] = {
     torch._assert,
-    torch._assert_async,
+    _ops.mylib.pipe_split.default,
     _ops.aten._assert_async.msg,
     _ops.aten._assert_scalar.default,
     _ops.aten.copy_.default,
