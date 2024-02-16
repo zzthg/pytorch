@@ -13,7 +13,7 @@ import torch.utils._pytree as pytree
 from torch.fx import Tracer, GraphModule
 from torch.fx.graph_module import _assign_attr
 from weakref import WeakKeyDictionary
-from collections import defaultdict
+from collections import defaultdict, deque
 from torch._subclasses.fake_tensor import FakeTensor, FakeTensorMode, unset_fake_temporarily, is_fake
 from torch._dispatch.python import enable_python_dispatcher, enable_pre_dispatch
 import torch.fx as fx
@@ -199,8 +199,71 @@ def track_tensor(tensor, proxy, *, constant, tracer):
     try_set_proxy_slot(tensor.storage_offset(), lambda x: set_meta(torch.ops.aten.sym_storage_offset.default(proxy), x))
     set_proxy_slot(tensor, tracer, _ProxyTensor(proxy, constant))
 
+
+
+def handle_tensor(e, proxy, tracer, constant, stack, top_level_constant):
+    track_tensor(e, proxy, constant=constant, tracer=tracer)
+    set_meta(proxy, e)
+
+def handle_sym_type(e, proxy, tracer, constant, stack, top_level_constant):
+    set_meta(proxy, e)
+    set_proxy_slot(e, tracer, lambda: proxy)
+
+def handle_tuple_list(e, proxy, tracer, constant, stack, top_level_constant):
+    if isinstance(proxy, fx.Proxy):
+        set_meta(proxy, e)
+
+    # example use case: allreduce_ returns ([tensor], work)
+    for idx, ee in enumerate(e):
+        stack.append((ee, proxy[idx], get_constant(top_level_constant, idx)))
+
+def handle_dict(e, proxy, tracer, constant, stack, top_level_constant):
+    # In theory we could support const-prop when proxy-tensor-tracing
+    # operators that returns dicts of tensors, but we have no use case
+    # for it today (since the only op we currently trace that can
+    # return a dict is triton_kernel_wrapper_functional/mutation,
+    # which does not participate in const-prop)
+    assert constant is None
+
+    if isinstance(proxy, fx.Proxy):
+        set_meta(proxy, e)
+
+    # example use case: triton_kernel_wrapper takes arguments as kwargs
+    for key, val in e.items():
+        stack.append((val, proxy[key], None))
+
+def handle_script_object(e, proxy, tracer, constant, stack, top_level_constant):
+    set_proxy_slot(e, tracer, proxy)
+    set_meta(proxy, e)
+
+def get_constant(constant, idx):
+    if constant is None:
+        return None
+    else:
+        return constant[idx]
+
+call_table = {
+    torch.Tensor: handle_tensor,
+    SymInt: handle_sym_type,
+    SymBool: handle_sym_type,
+    SymFloat: handle_sym_type,
+    tuple: handle_tuple_list,
+    list: handle_tuple_list,
+    dict: handle_dict,
+    torch.ScriptObject: handle_script_object
+}
+
 def track_tensor_tree(inner_res, proxy_res, *, constant, tracer):
-    def wrap_with_proxy(e, proxy, constant):
+    stack = deque([(inner_res, proxy_res, constant)])
+
+    def get_constant(idx):
+        if constant is None:
+            return None
+        else:
+            return constant[idx]
+
+    while stack:
+        e, proxy, constant = stack.pop()
         if isinstance(e, torch.Tensor):
             track_tensor(e, proxy, tracer=tracer, constant=constant)
             set_meta(proxy, e)
@@ -217,7 +280,7 @@ def track_tensor_tree(inner_res, proxy_res, *, constant, tracer):
 
             # example use case: allreduce_ returns ([tensor], work)
             for idx, ee in enumerate(e):
-                wrap_with_proxy(ee, proxy[idx], get_constant(idx))
+                stack.append((ee, proxy[idx], get_constant(idx)))
         elif isinstance(e, dict):
             # In theory we could support const-prop when proxy-tensor-tracing
             # operators that returns dicts of tensors, but we have no use case
@@ -231,19 +294,10 @@ def track_tensor_tree(inner_res, proxy_res, *, constant, tracer):
 
             # example use case: triton_kernel_wrapper takes arguments as kwargs
             for key, val in e.items():
-                wrap_with_proxy(val, proxy[key], None)
+                stack.append((val, proxy[key], None))
         else:
             # intentionally pass on primitives
             pass
-
-
-    def get_constant(idx):
-        if constant is None:
-            return None
-        else:
-            return constant[idx]
-
-    wrap_with_proxy(inner_res, proxy_res, constant)
 
     return inner_res
 
@@ -338,12 +392,43 @@ def proxy_call(proxy_mode, func, pre_dispatch, args, kwargs):
     # If there are SymInts, we also should not consider this constant.
     # However, fake tensor handling of SymInts is sufficiently broken that
     # I couldn't write a test for this case
-    all_constant = (
-        not any(t.constant is None for t in f_flat_args_kwargs if isinstance(t, _ProxyTensor))
+    all_constant = True
+    # In some circumstances, we will be tracing in a situation where a tensor
+    # is *statically* known to be a constant (currently, this only happens if
+    # you run torch.tensor; deterministic factory functions like torch.arange
+    # don't get this treatment).  When the tensor in question is small, it's
+    # helpful to due constant propagation in case we call item() (in which
+    # case we can return the constant value that is known, rather than give
+    # an error.)  The logic here tests if constant propagation is possible
+    # (because all of the inputs are constant).  If so, we disable fake tensor
+    # mode (if it is on) and do true compute on the constant.
+    #
+    # It's worth highlighting that we're making a policy decision here.
+    # There is a potential that the tensor is actually quite large, and we
+    # don't actually want to run the compute.  The tensor being quite large
+    # is one of the reasons why factory functions don't get this treatment
+    # (since they can be quite large; if a parameter is initialized to a
+    # constant value it will be!)  Similarly, there is also a potential
+    # to run an operator that blows up the size of a small tensor; we don't
+    # protect against this case, but we could force, e.g., only single
+    # element constant computation by testing the numel of the result before
+    # propagating const-ness.  Similarly, we don't require the constant to
+    # live on CPU, but we could.
+    any_constant = False
+
+    proxy_flat_args_kwargs = []
+    for t in f_flat_args_kwargs:
+        if isinstance(t, _ProxyTensor):
+            all_constant &= t.constant is not None
+            any_constant |= t.constant is not None
+            proxy_flat_args_kwargs.append(t.proxy)
         # TODO: maybe constant SymInts should also be allowed?  Not sure if
         # this can happen
-        and not any(isinstance(x, (SymInt, SymFloat, SymBool)) for x in flat_args_kwargs)
-    )
+        elif isinstance(t, py_sym_types):
+            all_constant &= False
+            proxy_flat_args_kwargs.append(fetch_sym_proxy(proxy_mode.tracer)(t))
+        else:
+            proxy_flat_args_kwargs.append(t)
 
     if torch.Tag.data_dependent_output in func.tags:
         # Check if all of the Tensor inputs are constants
@@ -363,10 +448,6 @@ def proxy_call(proxy_mode, func, pre_dispatch, args, kwargs):
                 "in your make_fx call."
             )
 
-    proxy_flat_args_kwargs = [e.proxy if isinstance(e, _ProxyTensor) else e for e in f_flat_args_kwargs]
-    proxy_flat_args_kwargs = [fetch_sym_proxy(proxy_mode.tracer)(e) if isinstance(e, (SymInt, SymFloat, SymBool))
-                              else e for e in proxy_flat_args_kwargs]
-    proxy_args, proxy_kwargs = pytree.tree_unflatten(proxy_flat_args_kwargs, spec)
 
     # When we trace through a torch.tensor invocation, you never actually
     # see a torch.ops.aten.tensor call. Instead, the way this function is
@@ -405,6 +486,7 @@ def proxy_call(proxy_mode, func, pre_dispatch, args, kwargs):
         func = torch.ops.aten.lift_fresh_copy.default
 
 
+    proxy_args, proxy_kwargs = pytree.tree_unflatten(proxy_flat_args_kwargs, spec)
     proxy_out = proxy_mode.tracer.create_proxy('call_function', func, proxy_args, proxy_kwargs,
                                                name=proxy_mode.tracer.graph._target_to_str(func.overloadpacket.__name__))
 
@@ -422,28 +504,7 @@ def proxy_call(proxy_mode, func, pre_dispatch, args, kwargs):
 
     out = func(*args, **kwargs)
 
-    # In some circumstances, we will be tracing in a situation where a tensor
-    # is *statically* known to be a constant (currently, this only happens if
-    # you run torch.tensor; deterministic factory functions like torch.arange
-    # don't get this treatment).  When the tensor in question is small, it's
-    # helpful to due constant propagation in case we call item() (in which
-    # case we can return the constant value that is known, rather than give
-    # an error.)  The logic here tests if constant propagation is possible
-    # (because all of the inputs are constant).  If so, we disable fake tensor
-    # mode (if it is on) and do true compute on the constant.
-    #
-    # It's worth highlighting that we're making a policy decision here.
-    # There is a potential that the tensor is actually quite large, and we
-    # don't actually want to run the compute.  The tensor being quite large
-    # is one of the reasons why factory functions don't get this treatment
-    # (since they can be quite large; if a parameter is initialized to a
-    # constant value it will be!)  Similarly, there is also a potential
-    # to run an operator that blows up the size of a small tensor; we don't
-    # protect against this case, but we could force, e.g., only single
-    # element constant computation by testing the numel of the result before
-    # propagating const-ness.  Similarly, we don't require the constant to
-    # live on CPU, but we could.
-    any_constant = any(t.constant is not None for t in f_flat_args_kwargs if isinstance(t, _ProxyTensor))
+
 
     constant = None
 
