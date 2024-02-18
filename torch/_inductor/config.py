@@ -341,7 +341,7 @@ def decide_compile_threads():
         return min(32, cpu_count)
 
 
-compile_threads = 64
+compile_threads = 2
 
 # gemm autotuning global cache dir
 if is_fbcode():
