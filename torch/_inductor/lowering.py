@@ -4668,19 +4668,22 @@ def var_mean_sum_(x, axis, correction, keepdim, return_mean):
 
 
 def use_two_step_variance(x, axis, keepdim):
-    # Instead of unrolling welford, just unroll the simpler two-step var
+    # Heuristics to choose between computing the mean + variance as two
+    # reductions, or in a single welford reduction.
     axis = _validate_reduction_axis(x, axis)
     kwargs = _make_reduction_inner(
         x, axis=axis, keepdims=keepdim, dtype=None, override_return_dtype=None
     )
-
-    ranges = kwargs["ranges"]
     reduction_numel = sympy_product(kwargs["reduction_ranges"])
-    return (
-        isinstance(reduction_numel, sympy.Integer)
-        and int(reduction_numel) < config.unroll_reductions_threshold
-        and sympy_product(ranges) != 1
+
+    # Disable for everything except split reductions while we
+    # investigate performance issues.
+    _, split = ir.Reduction.num_splits(
+        reduction_numel=reduction_numel,
+        reduction_type="sum",
+        **kwargs,
     )
+    return split < 2
 
 
 def var_mean_welford_(x, axis, *, correction, keepdim, return_mean):
