@@ -6868,6 +6868,8 @@ class LoopBody:
         self.root_block = LoopBodyBlock(self, fn, args)
         self.indexing = None
 
+        # print("loop body is: {}".format(self.debug_str()))
+
     @cache_on_self
     def get_nodes(self):
         all_graphs = itertools.chain(

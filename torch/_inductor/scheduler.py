@@ -1237,6 +1237,8 @@ class Scheduler:
             *V.graph.constants.keys(),
         }
 
+        # print("__len(nodes is: {}".format(len(nodes)), flush=True)
+
         self.nodes = [self.create_scheduler_node(n) for n in nodes]
 
         # some new constants could have been created above
@@ -1823,6 +1825,9 @@ class Scheduler:
                     if key in seen:
                         continue
                     seen.add(key)
+
+                    print("---- node1 is: {}".format(node1), flush=True)
+                    print("---- node2 is: {}".format(node2), flush=True)
 
                     if self.can_fuse(node1, node2):
                         possible_fusions.append(key)

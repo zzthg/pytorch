@@ -3455,6 +3455,8 @@ class CppScheduling(BaseScheduling):
             return True
         if reduce1 == () and vars1 == vars2 + reduce2:
             return True
+        if reduce2 == () and vars1 + reduce1 == vars2:
+            return True
         # TODO(jansel): allow fusion pointwise (vars1, ()) suffix?
         return False
 
@@ -3468,7 +3470,8 @@ class CppScheduling(BaseScheduling):
         return self._can_fuse_horizontal_impl(node1, node2)
 
     def can_fuse_vertical(self, node1, node2):
-        return self._can_fuse_horizontal_impl(node1, node2) and not node1.is_reduction()
+        # return self._can_fuse_horizontal_impl(node1, node2) and not node1.is_reduction()
+        return self._can_fuse_horizontal_impl(node1, node2)
 
     def codegen_nodes(self, nodes: List[SchedulerNode]):
         """

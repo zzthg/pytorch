@@ -5094,6 +5094,7 @@ def reduce_any(x, dim=None, keepdim=False):
 
 @register_lowering(aten.max, type_promotion_kind=None)
 def reduce_max(x, dim=None, keepdim=False):
+    print("--- hit the lowering of reduce_max ----", flush=True)
     if dim is not None:
         return (
             reduce_amax(x, axis=dim, keepdims=keepdim),
