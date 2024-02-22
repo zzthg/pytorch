@@ -1347,3 +1347,8 @@ def is_wait(node):
     from . import ir
 
     return isinstance(node, ir.Wait) or type(node) == ir._WaitKernel
+
+
+def device_need_guard(device: str):
+    assert isinstance(device, str)
+    return device in ["cuda", "xpu"]
