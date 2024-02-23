@@ -61,6 +61,14 @@ FunctionalTensorWrapper::FunctionalTensorWrapper(const Tensor& value)
   set_constructor_metadata();
 }
 
+FunctionalTensorWrapper::FunctionalTensorWrapper(const Storage& storage)
+    : FunctionalTensorWrapper(
+          static_cast<functionalization::FunctionalStorageImpl*>(
+              storage.unsafeGetStorageImpl())
+              ->base()) {
+  storage_ = storage;
+}
+
 void FunctionalTensorWrapper::freeze_storage() const {
   functional_storage_impl()->freeze();
 }
@@ -248,18 +256,21 @@ void FunctionalTensorWrapper::set__impl(const FunctionalTensorWrapper* other) {
   value_ = other->value_;
   generation_ = other->generation_;
   view_metas_ = other->view_metas_;
-  // FREEZE the old storage, preventing mutations to it.
-  // this is a huge pain to handle properly in all cases, so we ban it.
-  functional_storage_impl()->freeze();
-  // Unsafely swap out the storage with other's storage,
-  // disconnecting `self` with its view chain
-  storage_ = other->storage_;
-  /// explicitly mark the tensor as having its storage changed from set_()
-  // Otherwise, we don't actually have a 100% accurate way to check this.
-  // (We could check if the updated value has a new storage than the original value,
-  // but this won't also let us uniquely determine if the tensor **also**
-  // experienced a data mutation).
-  was_storage_changed_ = true;
+  // Only freeze the storage if we actually change it.
+  if (storage_.unsafeGetStorageImpl() != other->storage_.unsafeGetStorageImpl()) {
+    // FREEZE the old storage, preventing mutations to it.
+    // this is a huge pain to handle properly in all cases, so we ban it.
+    functional_storage_impl()->freeze();
+    // Unsafely swap out the storage with other's storage,
+    // disconnecting `self` with its view chain
+    storage_ = other->storage_;
+    /// explicitly mark the tensor as having its storage changed from set_()
+    // Otherwise, we don't actually have a 100% accurate way to check this.
+    // (We could check if the updated value has a new storage than the original value,
+    // but this won't also let us uniquely determine if the tensor **also**
+    // experienced a data mutation).
+    was_storage_changed_ = true;
+  }
 
   auto sizes_ = value_.sym_sizes();
   auto strides_ = value_.sym_strides();
@@ -708,6 +719,12 @@ std::vector<Tensor> create_functional_tensor_with_view_meta(ITensorListRef view_
     i++;
   }
   return outputs;
+}
+
+Tensor create_functional_tensor_from_base(const at::Tensor& tensor) {
+  TORCH_INTERNAL_ASSERT(
+      at::functionalization::impl::isFunctionalTensor(tensor));
+  return at::detail::make_tensor<FunctionalTensorWrapper>(tensor.storage());
 }
 
 void mutate_view_meta(const at::Tensor& self, functionalization::ViewMeta meta) {
