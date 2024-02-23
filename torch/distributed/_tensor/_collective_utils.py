@@ -106,10 +106,7 @@ def mesh_broadcast(
     Returns:
         A :class:`Work` object
     """
-    # TODO: Ideally we should use the meta tensor way
-    # (to register a meta kernel for the collective op)
-    # so that it would avoid the communication. Need to
-    # remove the check below once that is done.
+    # TODO: switch every callsite to use the functional broadcast instead
     if tensor.is_meta:
         return None
     dim_group = mesh.get_group(mesh_dim)
