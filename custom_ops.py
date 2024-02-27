@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 # aka torch.library
-from library import Operator, traceable, device_types
+from library import Operator, traceable
 
 # =====================================================================
 # This is example user library code. It defines
@@ -74,3 +74,19 @@ def my_sin_cos(x):
     Returns x.sin().cos()
     """
     return MySinCos.call(x)
+
+
+# Mutable op example
+class MySinInplace(Operator):
+    schema = "(Tensor(a!) x) -> ()"
+
+    # the black-box cpu kernel
+    @staticmethod
+    def impl_cpu(x):
+        x_np = x.detach().numpy()
+        np.sin(x_np, out=x_np)
+
+    # the abstract impl. Must be "traceable". User must use opcheck to test.
+    @staticmethod
+    def abstract(x):
+        return None
