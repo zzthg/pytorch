@@ -1097,6 +1097,37 @@ class ProcessGroupNCCLTest(MultiProcessTestCase):
             dist.recv(recv_tensor, 0)
             self.assertEqual(send_tensor, recv_tensor)
 
+
+    @requires_nccl()
+    @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "NCCL test requires 2+ GPUs")
+    def test_coalesced_recv_vs_allreduce(self):
+        store = c10d.FileStore(self.file_name, self.world_size)
+        pg = self._create_process_group_nccl(store, self.opts())
+        torch.distributed.distributed_c10d._set_pg_timeout(timedelta(seconds=2), pg)
+        device = self.rank_to_GPU[self.rank][0]
+
+        # Generate the same random tensor
+        torch.manual_seed(0)
+        send_tensor = torch.rand(10, 10, device=device)
+
+        # Setup phase- makes the communicator lazily initialize
+        if self.rank == 0:
+            dist.send(send_tensor, 1)
+        if self.rank == 1:
+            recv_tensor = torch.rand(10, 10, device=device)
+            dist.recv(recv_tensor, 0)
+            self.assertEqual(send_tensor, recv_tensor)
+
+        # Test phase- hangs
+        if self.rank == 0:
+            recv_tensor = torch.rand(10, 10, device=device)
+            op = dist.P2POp(dist.irecv, recv_tensor, 1)
+            dist.batch_isend_irecv([op]).pop().wait()
+            self.assertEqual(send_tensor, recv_tensor)
+        if self.rank == 1:
+            dist.send(send_tensor, 0)
+
+
     @requires_nccl()
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "NCCL test requires 1 GPU")
     @skip_if_lt_x_gpu(1)
