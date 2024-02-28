@@ -1,6 +1,7 @@
 # mypy: ignore-errors
 
 import contextlib
+import dataclasses
 import functools
 import inspect
 import itertools
@@ -1716,13 +1717,27 @@ class BuiltinVariable(VariableTracker):
 
         return None
 
+    def call_is_(self, tx, left, right):
+        # This comparison happens when we inlining into the __init__ method of dataclasses.
+        # It contains a piece of code that check whether the argument is
+        # the default factory object to to determine a name for the field.
+        if (
+            left.python_type() is dataclasses._HAS_DEFAULT_FACTORY_CLASS
+            or right.python_type() is dataclasses._HAS_DEFAULT_FACTORY_CLASS
+        ):
+            if left.python_type() is not right.python_type():
+                return ConstantVariable.create(False)
+            # This might be a bit too cautious but it's safer that we
+            # also make sure they're the exact global object defined in python dataclasses.
+            return ConstantVariable.create(left.value is right.value)
+        return self._comparison(tx, left, right)
+
     call_eq = _comparison
     call_gt = _comparison
     call_lt = _comparison
     call_ge = _comparison
     call_le = _comparison
     call_ne = _comparison
-    call_is_ = _comparison
     call_is_not = _comparison
 
     call_all = _polyfill_call_impl("all")
