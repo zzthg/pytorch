@@ -190,6 +190,7 @@ manual_torch_name_rule_map = {
     "torch._C._functorch.is_batchedtensor": TorchInGraphFunctionVariable,
     "torch._dynamo.mark_static": UserFunctionVariable,
     "torch.fx.experimental.symbolic_shapes.guard_size_oblivious": TorchInGraphFunctionVariable,
+    "torch.cuda._get_device_properties": TorchInGraphFunctionVariable,
 }
 
 
@@ -1605,7 +1606,6 @@ torch_c_binding_in_graph_functions = dict.fromkeys(
         "torch.cross",
         "torch.crow_indices_copy",
         "torch.ctc_loss",
-        "torch.cuda._get_device_properties",
         "torch.cudnn_affine_grid_generator",
         "torch.cudnn_batch_norm",
         "torch.cudnn_convolution_add_relu",
@@ -1898,6 +1898,7 @@ torch_c_binding_in_graph_functions = dict.fromkeys(
         "torch.positive",
         "torch.pow",
         "torch.prelu",
+        "torch._print",
         "torch.prod",
         "torch.promote_types",
         "torch.put",
@@ -2242,6 +2243,7 @@ torch_non_c_binding_in_graph_functions = dict.fromkeys(
         "torch._register_device_module",
         "torch._running_with_deploy",
         "torch._sparse_coo_tensor_unsafe",
+        "torch._utils._dummy_type",
         "torch._weights_only_unpickler._get_allowed_globals",
         "torch._weights_only_unpickler.load",
         "torch.align_tensors",
@@ -2393,7 +2395,6 @@ torch_non_c_binding_in_graph_functions = dict.fromkeys(
         "torch.cuda._set_stream_by_id",
         "torch.cuda._sleep",
         "torch.cuda._transform_uuid_to_ordinals",
-        "torch.cuda._utils._dummy_type",
         "torch.cuda._utils._get_device_index",
         "torch.cuda.amp.autocast_mode._cast",
         "torch.cuda.amp.autocast_mode.custom_bwd",
