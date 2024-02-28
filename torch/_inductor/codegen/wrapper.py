@@ -1286,10 +1286,6 @@ class WrapperCodeGen(CodeGen):
         )
 
     def codegen_allocation(self, buffer):
-        assert (
-            buffer.get_workspace_size() == 0
-        ), "Only support zero workspace size for now!"
-
         name = buffer.get_name()
 
         if name in V.graph.removed_buffers or name in self.allocated:
@@ -1315,10 +1311,6 @@ class WrapperCodeGen(CodeGen):
         self.writeline(AllocateLine(self, buffer))
 
     def codegen_free(self, buffer):
-        assert (
-            buffer.get_workspace_size() == 0
-        ), "Only support zero workspace size for now!"
-
         name = buffer.get_name()
 
         # can be freed but not reused
