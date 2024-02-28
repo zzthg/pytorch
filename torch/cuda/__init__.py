@@ -597,10 +597,8 @@ def set_stream(stream: Stream):
 
 def _parse_visible_devices() -> Union[List[int], List[str]]:
     r"""Parse CUDA_VISIBLE_DEVICES environment variable."""
-    var = (
-        os.getenv("CUDA_VISIBLE_DEVICES")
-        if not torch.version.hip
-        else os.getenv("HIP_VISIBLE_DEVICES")
+    var = os.getenv(
+        "CUDA_VISIBLE_DEVICES" if not torch.version.hip else "HIP_VISIBLE_DEVICES"
     )
     if var is None:
         return list(range(64))
