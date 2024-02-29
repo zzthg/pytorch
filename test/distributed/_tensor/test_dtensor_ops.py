@@ -94,7 +94,8 @@ dtensor_fails = {
     # get full support with varying sharding specs
     xfail("__getitem__"),
     xfail("__rsub__"),
-    xfail("_native_batch_norm_legit"),
+    #xfail("_batch_norm_with_update"),
+    #xfail("_native_batch_norm_legit"),
     xfail("_upsample_bilinear2d_aa"),
     xfail("addbmm"),
     xfail("addmv"),
@@ -113,7 +114,6 @@ dtensor_fails = {
     xfail("as_strided", "partial_views"),
     xfail("as_strided_scatter"),
     xfail("bernoulli"),
-    xfail("_batch_norm_with_update"),
     xfail("block_diag"),
     xfail("broadcast_shapes"),
     xfail("cauchy"),

@@ -191,8 +191,8 @@ inductor_skips["cuda"] = {
     # flaky
     "nn.functional.cosine_embedding_loss": {b8},
     "native_batch_norm": {f16, f32, f64},
-    "_native_batch_norm_legit": {f16, f32, f64},
-    "_batch_norm_with_update": {f16, f32, f64},
+    #"_native_batch_norm_legit": {f16, f32, f64},
+    #"_batch_norm_with_update": {f16, f32, f64},
 }
 
 if not SM80OrLater:
