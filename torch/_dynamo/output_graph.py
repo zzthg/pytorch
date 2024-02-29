@@ -1008,10 +1008,10 @@ class OutputGraph(Checkpointable[OutputGraphState]):
         
         # Return variables used for logging at the end
         for debug_var, args in tx.debug_locals:
-            codegen(debug_var)
+            cg(debug_var)
             for arg in args:
-                codegen(arg)
-            codegen.extend_output(create_call_function(len(args), True))
+                cg(arg)
+            cg.extend_output(create_call_function(len(args), True))
 
         cg.restore_stack(stack_values, value_from_source=not tx.export)
         self.side_effects.codegen_update_mutated(cg)
