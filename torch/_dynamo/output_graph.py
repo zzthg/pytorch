@@ -1005,7 +1005,7 @@ class OutputGraph(Checkpointable[OutputGraphState]):
                 cg.store_attr(name)
         self.side_effects.codegen_hooks(cg)
         self.side_effects.codegen_save_tempvars(cg)
-        
+
         # Return variables used for logging at the end
         for debug_var, args in tx.debug_locals:
             cg(debug_var)
