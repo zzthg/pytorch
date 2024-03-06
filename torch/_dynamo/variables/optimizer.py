@@ -4,6 +4,7 @@ import weakref
 from typing import Dict, List
 
 import torch
+
 from ..decorators import mark_static_address
 
 from ..guards import GuardBuilder, install_guard
@@ -14,7 +15,6 @@ from .base import VariableTracker
 from .constant import ConstantVariable
 from .dicts import ConstDictVariable
 from .lists import ListVariable
-from .misc import GetAttrVariable
 from .user_defined import UserDefinedObjectVariable
 
 
@@ -56,7 +56,7 @@ class OptimizerVariable(UserDefinedObjectVariable):
         kwargs: "Dict[str, VariableTracker]",
     ) -> "VariableTracker":
         """This is an optimization to avoid tracing the very slow initialization of the optimizer"""
-        if name == "_init_group":
+        if name == "":
             try:
                 py_args, py_kwargs = self.get_python_args(*args, **kwargs)
                 ret_val = self.value._init_group(*py_args, **py_kwargs)
@@ -80,8 +80,8 @@ class OptimizerVariable(UserDefinedObjectVariable):
         return super().call_method(tx, name, args, kwargs)
 
     def var_getattr(self, tx, name):
-        if name == "_init_group":
-            return GetAttrVariable(self, name)
+        # if name == "_init_group":
+        #    return GetAttrVariable(self, name)
 
         return super().var_getattr(tx, name)
 
