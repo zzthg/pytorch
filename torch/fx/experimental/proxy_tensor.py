@@ -563,6 +563,11 @@ def wrap_key(f, tensors, tracer, pre_dispatch: bool):
             out
         )
         out = pytree.tree_map_only(
+            torch.ScriptObject,
+            lambda t: get_proxy_slot(t, tracer, t, lambda x: x),
+            out
+        )
+        out = pytree.tree_map_only(
             (SymInt, SymFloat, SymBool),
             lambda t: get_proxy_slot(t, tracer)(),
             out
