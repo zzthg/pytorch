@@ -50,6 +50,16 @@ def enable_torchbind_tracing():
         torch.ScriptMethod.__call__ = _orig_scriptmethod_call  # type: ignore[method-assign]
 
 
+@contextmanager
+def _restore_script_method_call():
+    prior_call = torch.ScriptMethod.__call__
+    try:
+        torch.ScriptMethod.__call__ = _orig_scriptmethod_call  # type: ignore[method-assign]
+        yield
+    finally:
+        torch.ScriptMethod.__call__ = prior_call  # type: ignore[method-assign]
+
+
 @call_torchbind.py_impl(DispatchKey.CompositeExplicitAutograd)
 def call_torchbind_impl(obj, method, *args, **kwargs):
     return _orig_scriptmethod_call(getattr(obj, method), *args, **kwargs)
@@ -67,19 +77,34 @@ def inner(mode, *args, **kwargs):
             proxy_args,
             proxy_kwargs,
         )
-        out = call_torchbind_impl(*args, **kwargs)
+        out = call_torchbind(*args, **kwargs)
 
         return track_tensor_tree(out, out_proxy, constant=None, tracer=mode.tracer)
     else:
         return call_torchbind(*args, **kwargs)
 
 
-# TODO: currently we just run the C++ implementation with fake tensors.
-# But we should make it possible to register a fake torchbind implementation.
 @call_torchbind.py_impl(FakeTensorMode)
 def call_torchbind_fake(mode, *args, **kwargs):
     with mode:
-        return call_torchbind_impl(*args, **kwargs)
+        from torch._subclasses.fake_tensor import (
+            _cached_fakify_script_object,
+            _maybe_cached_fakify_script_object,
+        )
+
+        assert len(args) >= 2
+        script_object, method_name, *pos_args = args
+        # We need to restore original script method call to
+        # call the actual methods of real script object in order to
+        # create a fake script object with from_real.
+        with _restore_script_method_call():
+            fake_script_obj = _cached_fakify_script_object(script_object)
+        pos_args, kwargs = _maybe_cached_fakify_script_object(pos_args, kwargs)
+        if not hasattr(fake_script_obj, method_name):
+            raise RuntimeError(
+                f"Do you forget to fakify `{method_name}` method for fake object {type(fake_script_obj)}?"
+            )
+        return getattr(fake_script_obj, method_name)(*pos_args, **kwargs)
 
 
 call_torchbind.py_impl(DispatchKey.Autograd)(

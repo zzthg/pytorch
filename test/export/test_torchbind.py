@@ -266,8 +266,7 @@ def forward(self, arg0_1, arg1_1):
 
         m = MyModule()
         input = torch.ones(2, 3)
-        with enable_torchbind_tracing():
-            ep = torch.export.export(m, (input,), strict=False)
+        ep = self._test_export_same_as_eager(m, (input,), strict=False)
 
         unlifted = ep.module()
         self.assertExpectedInline(
@@ -426,12 +425,53 @@ def forward(self, arg0_1, arg1_1, arg2_1, arg3_1, arg4_1):
     """,  # noqa: B950
         )
 
+    def test_tensor_queue_aot_export_methods(self):
+        class Model(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear = torch.nn.Linear(3, 2)
+
+            def forward(self, tq, x):
+                tq.push(x.cos())
+                tq.push(x.sin())
+                x_cos = tq.pop() + tq.size()
+                x_sin = tq.pop() - tq.size()
+                return self.linear(x_sin), self.linear(x_cos), tq
+
+        mod = Model()
+        tq = torch.classes._TorchScriptTesting._TensorQueue(
+            torch.empty(
+                0,
+            ).fill_(-1)
+        )
+        x = torch.ones(2, 3)
+        with torch._higher_order_ops.torchbind.enable_torchbind_tracing():
+            gm, _ = aot_export_module(mod, (tq, x), trace_joint=False)
+            self.assertExpectedInline(
+                gm.code.strip("\n"),
+                """\
+def forward(self, arg0_1, arg1_1, arg2_1, arg3_1):
+    cos = torch.ops.aten.cos.default(arg3_1)
+    call_torchbind = torch.ops.higher_order.call_torchbind(arg2_1, 'push', cos);  cos = None
+    sin = torch.ops.aten.sin.default(arg3_1);  arg3_1 = None
+    call_torchbind_1 = torch.ops.higher_order.call_torchbind(arg2_1, 'push', sin);  sin = None
+    call_torchbind_2 = torch.ops.higher_order.call_torchbind(arg2_1, 'pop')
+    call_torchbind_3 = torch.ops.higher_order.call_torchbind(arg2_1, 'size')
+    add = torch.ops.aten.add.Tensor(call_torchbind_2, 1);  call_torchbind_2 = None
+    call_torchbind_4 = torch.ops.higher_order.call_torchbind(arg2_1, 'pop')
+    call_torchbind_5 = torch.ops.higher_order.call_torchbind(arg2_1, 'size')
+    sub = torch.ops.aten.sub.Tensor(call_torchbind_4, 0);  call_torchbind_4 = None
+    t = torch.ops.aten.t.default(arg0_1)
+    addmm = torch.ops.aten.addmm.default(arg1_1, sub, t);  sub = t = None
+    t_1 = torch.ops.aten.t.default(arg0_1);  arg0_1 = None
+    addmm_1 = torch.ops.aten.addmm.default(arg1_1, add, t_1);  arg1_1 = add = t_1 = None
+    return (addmm, addmm_1, arg2_1)
+    """,
+            )
+
 
 @skipIfTorchDynamo("torchbind not supported with dynamo yet")
 class TestImplAbstractClass(TestCase):
-    def tearDown(self):
-        torch._library.abstract_impl_class.global_abstract_class_registry.clear()
-
     def test_impl_abstract_class_no_torch_bind_class(self):
         with self.assertRaisesRegex(RuntimeError, "Tried to instantiate class"):
 
@@ -450,9 +490,7 @@ class TestImplAbstractClass(TestCase):
                     pass
 
     def test_impl_abstract_class_from_real_not_classmethod(self):
-        with self.assertRaisesRegex(
-            RuntimeError, "must define a classmethod from_real"
-        ):
+        with self.assertRaisesRegex(RuntimeError, "from_real have to be a classmethod"):
 
             @torch._library.impl_abstract_class("_TorchScriptTesting::_Foo")
             class FakeFoo:
@@ -476,6 +514,9 @@ class TestImplAbstractClass(TestCase):
                 return cls(x, y)
 
         torch._library.impl_abstract_class("_TorchScriptTesting::_Foo", FakeFoo)
+        torch._library.abstract_impl_class.deregister_abstract_impl(
+            "_TorchScriptTesting::_Foo"
+        )
 
     def test_impl_abstract_class_duplicate_registration(self):
         @torch._library.impl_abstract_class("_TorchScriptTesting::_Foo")
@@ -491,6 +532,9 @@ class TestImplAbstractClass(TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "already registered"):
             torch._library.impl_abstract_class("_TorchScriptTesting::_Foo", FakeFoo)
+        torch._library.abstract_impl_class.deregister_abstract_impl(
+            "_TorchScriptTesting::_Foo"
+        )
 
 
 if __name__ == "__main__":
