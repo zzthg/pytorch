@@ -15,6 +15,7 @@ TEST_MULTIXPU = torch.xpu.device_count() > 1
 cpu_device = torch.device("cpu")
 xpu_device = torch.device("xpu")
 
+
 class TestXpu(TestCase):
     def test_device_behavior(self):
         current_device = torch.xpu.current_device()
@@ -291,6 +292,7 @@ if __name__ == "__main__":
             c = a + b
             c_xpu = a_xpu + b_xpu
             self.assertEqual(c, c_xpu.cpu())
+
 
 if __name__ == "__main__":
     run_tests()
