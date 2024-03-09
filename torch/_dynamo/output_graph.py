@@ -955,6 +955,7 @@ class OutputGraph(Checkpointable[OutputGraphState]):
             and all(isinstance(x, TensorVariable) for x in stack_values)
             and len(set(stack_values)) == len(stack_values)
             and self.side_effects.is_empty()
+            and not len(tx.debug_locals) != 0
             and not self.backward_state
         ):
             append_prefix_insts()
@@ -1004,6 +1005,14 @@ class OutputGraph(Checkpointable[OutputGraphState]):
                 cg.store_attr(name)
         self.side_effects.codegen_hooks(cg)
         self.side_effects.codegen_save_tempvars(cg)
+
+        # Return variables used for logging at the end
+        for debug_var, args in tx.debug_locals:
+            cg(debug_var)
+            for arg in args:
+                cg(arg)
+            cg.extend_output(create_call_function(len(args), True))
+
         cg.restore_stack(stack_values, value_from_source=not tx.export)
         self.side_effects.codegen_update_mutated(cg)
 
@@ -1477,7 +1486,8 @@ class OutputGraph(Checkpointable[OutputGraphState]):
                         missing = fvs - symbol_to_proxy.keys()
                         if missing:
                             i1 = sorted(missing)[0]
-                            assert self.shape_env.is_unbacked_symint(i1), i1
+                            # TODO: Remove relaxing assert on unbacked_symint https://github.com/pytorch/pytorch/issues/119689
+                            # assert self.shape_env.is_unbacked_symint(i1), i1
                             ras_by_symbol.setdefault(i1, []).append(ra)
                         else:
                             # Convert the sympy expression into a sequence of FX
