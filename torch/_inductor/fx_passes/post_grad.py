@@ -58,7 +58,6 @@ pass_patterns = [
     PatternMatcherPass(),
 ]
 # patterns applied only in inference
-inference_patterns = PatternMatcherPass()
 decompose_mm_pass = PatternMatcherPass()
 
 
@@ -90,8 +89,6 @@ def post_grad_passes(gm: torch.fx.GraphModule, is_inference: bool):
         remove_noop_ops(gm.graph)
         for patterns in pass_patterns:
             patterns.apply(gm.graph)  # type: ignore[arg-type]
-        if is_inference:
-            inference_patterns.apply(gm.graph)  # type: ignore[arg-type]
         decompose_mm_pass.apply(gm.graph)  # type: ignore[arg-type]
 
     if config.post_grad_custom_post_pass is not None:
