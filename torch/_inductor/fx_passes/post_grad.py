@@ -57,7 +57,6 @@ pass_patterns = [
     PatternMatcherPass(),
     PatternMatcherPass(),
 ]
-# patterns applied only in inference
 decompose_mm_pass = PatternMatcherPass()
 
 
