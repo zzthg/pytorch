@@ -22,16 +22,15 @@ serialized.
     import torch
     from torch.export import export
 
-    class Mod(torch.nn.Module):
-        def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-            a = torch.sin(x)
-            b = torch.cos(y)
-            return a + b
+    def f(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        a = torch.sin(x)
+        b = torch.cos(y)
+        return a + b
 
     example_args = (torch.randn(10, 10), torch.randn(10, 10))
 
     exported_program: torch.export.ExportedProgram = export(
-        Mod(), args=example_args
+        f, args=example_args
     )
     print(exported_program)
 
@@ -394,15 +393,14 @@ branch that is being taken with the given sample inputs. For example:
     import torch
     from torch.export import export
 
-    class Mod(torch.nn.Module):
-        def forward(self, x):
-            if x.shape[0] > 5:
-                return x + 1
-            else:
-                return x - 1
+    def fn(x):
+        if x.shape[0] > 5:
+            return x + 1
+        else:
+            return x - 1
 
     example_inputs = (torch.rand(10, 2),)
-    exported_program = export(Mod(), example_inputs)
+    exported_program = export(fn, example_inputs)
     print(exported_program)
 
 .. code-block::
@@ -437,14 +435,13 @@ For example:
     import torch
     from torch.export import export
 
-    class Mod(torch.nn.Module):
-        def forward(self, x: torch.Tensor, const: int, times: int):
-            for i in range(times):
-                x = x + const
-            return x
+    def fn(x: torch.Tensor, const: int, times: int):
+        for i in range(times):
+            x = x + const
+        return x
 
     example_inputs = (torch.rand(2, 2), 1, 3)
-    exported_program = export(Mod(), example_inputs)
+    exported_program = export(fn, example_inputs)
     print(exported_program)
 
 .. code-block::

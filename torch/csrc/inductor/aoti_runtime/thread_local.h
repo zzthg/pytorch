@@ -1,5 +1,3 @@
-#pragma once
-
 #include <torch/csrc/inductor/aoti_runtime/arrayref_tensor.h>
 
 namespace torch {

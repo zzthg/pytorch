@@ -938,9 +938,9 @@ class TORCH_API ProcessedNode {
     return values_[outputs_offset_ + i];
   }
 
-  uint32_t num_outputs() const {
+  size_t num_outputs() const {
     DCHECK(fn_ != nullptr);
-    return static_cast<uint32_t>(fn_->num_outputs());
+    return fn_->num_outputs();
   }
 
   C10_NODISCARD c10::ArrayRef<const IValue> outputs() const {
