@@ -60,7 +60,7 @@ pass_patterns = [
 decompose_mm_pass = PatternMatcherPass()
 
 
-def post_grad_passes(gm: torch.fx.GraphModule, is_inference: bool):
+def post_grad_passes(gm: torch.fx.GraphModule):
     """
     Passes that run on after grad.  This is called once on the forwards
     graph and once on the backwards graph.
