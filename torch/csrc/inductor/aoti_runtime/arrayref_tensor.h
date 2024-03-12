@@ -352,16 +352,5 @@ inline AtenTensorHandle expensive_copy_to_tensor_if_needed(
   return handle;
 }
 
-template <typename T>
-const T& convert_arrayref_tensor_to_tensor(const T& t) {
-  return t;
-}
-
-template <typename T>
-RAIIAtenTensorHandle convert_arrayref_tensor_to_tensor(
-    const ArrayRefTensor<T>& art) {
-  return art.expensiveCopyToTensor();
-}
-
 } // namespace aot_inductor
 } // namespace torch

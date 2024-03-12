@@ -4364,11 +4364,7 @@ class InplaceBernoulliFallback(ExternKernel):
         )
         self.name = V.graph.register_buffer(self)
         self.python_kernel_name = "aten.bernoulli_"
-        self.cpp_kernel_name = (
-            "aoti_torch_bernoulli_"
-            if config.abi_compatible
-            else "at::native::bernoulli_"
-        )
+        self.cpp_kernel_name = "at::native::bernoulli_"
         mark_node_as_mutating(self, x)
 
 
@@ -7935,16 +7931,11 @@ class _WaitKernel(_CollectiveKernel):
             # Out-of-place single-output
             return [inp.inputs[0]]
         elif isinstance(inp, MultiOutput):
-            # This can be two things:
-            # 1. Out-of-place multi-output coll
-            # 2. In-place coll with inputs coming from another MultiOutput
+            # Out-of-place multi-output
             coll = inp.inputs[0]
-            # Case 1
-            if isinstance(coll, _CollectiveKernel):
-                _, idx = inp.indices[0]
-                return [coll.inputs[idx]]
-            # Case 2
-            return []
+            assert isinstance(coll, _CollectiveKernel)
+            _, idx = inp.indices[0]
+            return [coll.inputs[idx]]
         else:
             # In-place requires no additional deps handling for volatile
             # reads since the inputs are mutated.

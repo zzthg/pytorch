@@ -1,7 +1,7 @@
 import functools
 import os
 from itertools import chain, count
-from typing import Any, List, Optional, TYPE_CHECKING
+from typing import Any, List, Optional
 
 import sympy
 
@@ -13,9 +13,6 @@ from ..triton_heuristics import grid as default_grid
 from ..virtualized import V
 from .cpp_wrapper_cpu import CppWrapperCpu
 from .wrapper import SymbolicCallArg
-
-if TYPE_CHECKING:
-    from ..graph import GraphLowering
 
 
 def is_int(s: str) -> bool:
@@ -68,7 +65,6 @@ class CppWrapperCuda(CppWrapperCpu):
                 """
                 #include <c10/cuda/CUDAGuard.h>
                 #include <c10/cuda/CUDAStream.h>
-                #include <ATen/cuda/EmptyTensor.h>
                 """
             )
 
@@ -145,9 +141,8 @@ class CppWrapperCuda(CppWrapperCpu):
 
     def write_get_raw_stream(self, index, graph=None):
         name = f"stream{index}"
-        self.writeline(f"cudaStream_t {name};")
         self.writeline(
-            f"AOTI_TORCH_ERROR_CODE_CHECK(aoti_torch_get_current_cuda_stream({index}, (void**)&{name}));"
+            f"cudaStream_t {name} = at::cuda::getCurrentCUDAStream({index});"
         )
         return name
 
@@ -170,12 +165,7 @@ class CppWrapperCuda(CppWrapperCpu):
 
     @functools.lru_cache(None)
     def generate_load_kernel_once(
-        self,
-        name: str,
-        mangled_name: str,
-        cubin_path: str,
-        shared_mem: int,
-        graph: "GraphLowering",  # for per-graph caching
+        self, name: str, mangled_name: str, cubin_path: str, shared_mem: int
     ):
         if V.graph.aot_mode:
             self.writeline(f"if (kernels.{name} == nullptr) {{")
@@ -275,9 +265,7 @@ class CppWrapperCuda(CppWrapperCpu):
         ), f"cubin file should already exist at this moment: {cubin_path}"
         shared_mem = params.get("shared_mem", 0)
 
-        self.generate_load_kernel_once(
-            name, mangled_name, cubin_path, shared_mem, V.graph
-        )
+        self.generate_load_kernel_once(name, mangled_name, cubin_path, shared_mem)
 
         # args with value 1 are added into equal_to_1 and constants
         # in triton_meta (in the Python codegen) which makes them

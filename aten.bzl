@@ -62,10 +62,11 @@ def generate_aten_impl(ctx):
     outputs = [ops_dir] + ctx.outputs.outs
 
     install_dir = paths.dirname(ops_dir.path)
-    ctx.actions.run(
+    tool_inputs, tool_inputs_manifest = ctx.resolve_tools(tools = [ctx.attr.generator])
+    ctx.actions.run_shell(
         outputs = outputs,
         inputs = ctx.files.srcs,
-        executable = ctx.executable.generator,
+        command = ctx.executable.generator.path + " $@",
         arguments = [
             "--source-path",
             "aten/src/ATen",
@@ -73,6 +74,8 @@ def generate_aten_impl(ctx):
             "--install_dir",
             install_dir,
         ],
+        tools = tool_inputs,
+        input_manifests = tool_inputs_manifest,
         use_default_shell_env = True,
         mnemonic = "GenerateAten",
     )
