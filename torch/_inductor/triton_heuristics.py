@@ -307,11 +307,6 @@ class CachingAutotuner(KernelInterface):
             config.assert_indirect_indexing and torch.version.hip is None
         )
 
-        # Setting device_type="hip" required on ROCm to pass down to triton
-        compile_meta["device_type"] = (
-            self.device_type if torch.version.hip is None else "hip"
-        )
-
         if warm_cache_only_with_cc:
             cc = warm_cache_only_with_cc
         else:
@@ -321,6 +316,11 @@ class CachingAutotuner(KernelInterface):
             device_id = compile_meta["device"]
             device = torch.device(device_type, device_id)
             cc = self.gpu_device.get_compute_capability(device)
+
+        # Setting device_type="hip" required on ROCm to pass down to triton
+        compile_meta["device_type"] = (
+            self.device_type if torch.version.hip is None else "hip"
+        )
 
         compile_meta["cc"] = cc
 
