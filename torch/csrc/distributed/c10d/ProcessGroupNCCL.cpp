@@ -80,6 +80,15 @@ ncclDataType_t getNcclDataType(at::ScalarType type) {
   return it->second;
 }
 
+ncclDataType_t getNcclAllGatherDataType(at::ScalarType type) {
+  if (type == at::kFloat8_e5m2 ||
+      type == at::kFloat8_e4m3fn) {
+    return ncclInt8;
+  } else {
+    return getNcclDataType(type);
+  }
+}
+
 bool complexViewAsRealAllowed(const ReduceOp reduceOp) {
   switch (reduceOp) {
     case ReduceOp::SUM:
@@ -3368,11 +3377,12 @@ c10::intrusive_ptr<Work> ProcessGroupNCCL::allgather(
             c10::cuda::CUDACachingAllocator::recordStream(
                 output.storage().data_ptr(), stream);
           }
+
           return ncclAllGather(
               input.data_ptr(),
               output.data_ptr(),
               input.numel(),
-              getNcclDataType(input.scalar_type()),
+              getNcclAllGatherDataType(input.scalar_type()),
               comm,
               stream.stream());
         },
@@ -3443,7 +3453,7 @@ c10::intrusive_ptr<Work> ProcessGroupNCCL::allgather_into_tensor_coalesced(
             input.data_ptr(),
             output.data_ptr(),
             input.numel(),
-            getNcclDataType(input.scalar_type()),
+            getNcclAllGatherDataType(input.scalar_type()),
             comm,
             stream.stream());
       },
@@ -4238,11 +4248,12 @@ c10::intrusive_ptr<Work> ProcessGroupNCCL::_allgather_base(
           c10::cuda::CUDACachingAllocator::recordStream(
               output.storage().data_ptr(), stream);
         }
+
         return ncclAllGather(
             input.data_ptr(),
             output.data_ptr(),
             input.numel(),
-            getNcclDataType(input.scalar_type()),
+            getNcclAllGatherDataType(input.scalar_type()),
             comm,
             stream.stream());
       },

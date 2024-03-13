@@ -99,12 +99,17 @@ inline void check_supported_max_int_with_precision(int64_t n, const Tensor& tens
 }
 
 // Called by `empty*` functions when deterministic algorithms are enabled to
-// fill the tensor with NaN if it is floating point or complex type, or fill
-// with max value if it is integer type
+// fill the tensor with NaN if it is floating point or complex type with NaN value,
+// or INF if it is floating point without NaN value, or max value if it is integer type.
 inline Tensor& fill_empty_deterministic_(Tensor& tensor) {
-  if (tensor.is_floating_point() || tensor.is_complex()) {
-    AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
-      kBFloat16, kHalf, tensor.scalar_type(), "fill_empty_deterministic_", [&]() {
+  if (tensor.scalar_type() == ScalarType::Float8_e5m2) {
+    AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND1(
+      kFloat8_e5m2, tensor.scalar_type(), "fill_empty_deterministic_", [&]() {
+        tensor.fill_(std::numeric_limits<scalar_t>::infinity());
+    });
+  } else if (tensor.is_floating_point() || tensor.is_complex()) {
+    AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND3(
+      kBFloat16, kHalf, kFloat8_e4m3fn, tensor.scalar_type(), "fill_empty_deterministic_", [&]() {
         tensor.fill_(std::numeric_limits<scalar_t>::quiet_NaN());
     });
   } else {
