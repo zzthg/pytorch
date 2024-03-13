@@ -20,6 +20,7 @@ import json
 import re
 from collections import defaultdict
 from pytest_shard_custom import PytestShardPlugin, pytest_addoptions as shard_addoptions
+from pytest_disabled_tests import DisabledTestsPlugin, pytest_addoptions as disabled_addoptions
 
 # a lot of this file is copied from _pytest.junitxml and modified to get rerun info
 
@@ -86,6 +87,7 @@ def pytest_addoption(parser: Parser) -> None:
         default="xunit2",
     )
     shard_addoptions(parser)
+    disabled_addoptions(parser)
 
 
 def pytest_configure(config: Config) -> None:
@@ -109,6 +111,8 @@ def pytest_configure(config: Config) -> None:
         config.pluginmanager.register(StepcurrentPlugin(config), "stepcurrentplugin")
     if config.getoption("num_shards"):
         config.pluginmanager.register(PytestShardPlugin(config), "pytestshardplugin")
+    if config.getoption("import_disabled_tests")
+        config.pluginmanager.register(DisabledTestsPlugin(config), "disabledtestsplugin")
 
 
 def pytest_unconfigure(config: Config) -> None:
