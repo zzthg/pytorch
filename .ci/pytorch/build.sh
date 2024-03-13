@@ -254,8 +254,7 @@ else
     # set only when building other architectures
     # or building non-XLA tests.
     if [[ "$BUILD_ENVIRONMENT" != *rocm*  &&
-          "$BUILD_ENVIRONMENT" != *xla* &&
-          "$BUILD_ENVIRONMENT" != *xpu* ]]; then
+          "$BUILD_ENVIRONMENT" != *xla* ]]; then
       WERROR=1 python setup.py bdist_wheel
     else
       python setup.py bdist_wheel
