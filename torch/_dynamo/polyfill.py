@@ -45,3 +45,13 @@ def accumulate_grad(x, new_grad):
         x.grad = new_grad
     else:
         x.grad.add_(new_grad)
+
+
+# rprop, rmsprop and adadelta state increments are
+# skipped in dynamo
+def optimizer_incr(optimizer):
+    for group in optimizer.param_groups:
+        for p in group["params"]:
+            state = optimizer.state[p]
+            if state:
+                state["step"] += 1

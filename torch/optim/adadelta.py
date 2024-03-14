@@ -48,7 +48,7 @@ class Adadelta(Optimizer):
             group.setdefault("maximize", False)
             group.setdefault("differentiable", False)
 
-    def _init_group(self, group, params_with_grad, grads, square_avgs, acc_deltas):
+    def _init_group(self, group, params_with_grad, grads, square_avgs, acc_deltas, compiled=False):
         has_complex = False
         for p in group["params"]:
             if p.grad is None:
@@ -63,7 +63,11 @@ class Adadelta(Optimizer):
 
             # Lazy state initialization
             if len(state) == 0:
-                state["step"] = 0
+                if compiled:
+                    state["step"] = torch.zeros((), dtype=torch.long, device=p.device)
+                else:
+                    state["step"] = 0
+
                 state["square_avg"] = torch.zeros_like(
                     p, memory_format=torch.preserve_format
                 )
@@ -74,7 +78,9 @@ class Adadelta(Optimizer):
             square_avgs.append(state["square_avg"])
             acc_deltas.append(state["acc_delta"])
 
-            state["step"] += 1
+            if not compiled:
+                state["step"] += 1
+
         return has_complex
 
     @_use_grad_for_differentiable
@@ -106,6 +112,8 @@ class Adadelta(Optimizer):
             )
 
             has_complex = self._init_group(group, params_with_grad, grads, square_avgs, acc_deltas)
+
+
 
             adadelta(
                 params_with_grad,

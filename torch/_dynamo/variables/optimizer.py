@@ -56,11 +56,29 @@ class OptimizerVariable(UserDefinedObjectVariable):
         args: "List[VariableTracker]",
         kwargs: "Dict[str, VariableTracker]",
     ) -> "VariableTracker":
+        from .constant import ConstantVariable
+
         """This is an optimization to avoid tracing the very slow initialization of the optimizer"""
         if name == "_init_group":
             try:
                 py_args, py_kwargs = self.get_python_args(*args, **kwargs)
+                if isinstance(
+                    self.value,
+                    (torch.optim.Rprop, torch.optim.RMSprop, torch.optim.Adadelta),
+                ):
+                    py_kwargs["compiled"] = True
+
                 ret_val = self.value._init_group(*py_args, **py_kwargs)
+
+                if isinstance(
+                    self.value,
+                    (torch.optim.Rprop, torch.optim.RMSprop, torch.optim.Adadelta),
+                ):
+                    from ..polyfill import optimizer_incr
+                    from .functions import UserFunctionVariable
+
+                    UserFunctionVariable(optimizer_incr).call_function(tx, [self], {})
+
                 self.map_sources_and_install_guards(tx)
                 self.update_list_args(tx, args, kwargs, py_args, py_kwargs)
                 # stash a weak_ptr to optimizer to invalidate code

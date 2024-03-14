@@ -54,7 +54,7 @@ class RMSprop(Optimizer):
             group.setdefault("maximize", False)
             group.setdefault("differentiable", False)
 
-    def _init_group(self, group, params_with_grad, grads, square_avgs, momentum_buffer_list, grad_avgs):
+    def _init_group(self, group, params_with_grad, grads, square_avgs, momentum_buffer_list, grad_avgs, compiled=False):
         has_complex = False
         for p in group["params"]:
             if p.grad is None:
@@ -70,7 +70,10 @@ class RMSprop(Optimizer):
 
             # State initialization
             if len(state) == 0:
-                state["step"] = 0
+                if compiled:
+                    state["step"] = torch.zeros((), dtype=torch.long)
+                else:
+                    state["step"] = 0
                 state["square_avg"] = torch.zeros_like(
                     p, memory_format=torch.preserve_format
                 )
@@ -92,7 +95,9 @@ class RMSprop(Optimizer):
             if group["differentiable"] and isinstance(state["step"], Tensor):
                 raise RuntimeError("`step` can't be a tensor")
 
-            state["step"] += 1
+            if not compiled:
+                state["step"] += 1
+
         return has_complex
 
     @_use_grad_for_differentiable
