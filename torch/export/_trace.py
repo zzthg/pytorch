@@ -841,6 +841,8 @@ def _export(
             gm = res.graph_module
 
         _rewrite_non_persistent_buffers(mod, ep_non_strict.sig, ep_non_strict.constants)
+
+        print("GRAPH", gm.graph)
         return ExportedProgram(
             root=gm,
             graph=gm.graph,
@@ -1037,6 +1039,7 @@ def _export(
         gm = res.graph_module
 
     assert orig_out_spec is not None
+    print("GRAPH", gm.graph)
     exported_program = ExportedProgram(
         root=gm,
         graph=gm.graph,
