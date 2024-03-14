@@ -216,6 +216,8 @@ except ImportError:
 #         Skips the test if the device is not a CUDA device
 #     - @onlyMPS
 #         Skips the test if the device is not a MPS device
+#     - @onlyXPU
+#         Skips the test if the device is not a XPU device
 #     - @skipCPUIfNoLapack
 #         Skips the test if the device is a CPU device and LAPACK is not installed
 #     - @skipCPUIfNoMkl
@@ -1027,6 +1029,12 @@ class skipMPSIf(skipIf):
     def __init__(self, dep, reason):
         super().__init__(dep, reason, device_type='mps')
 
+# Skips a test on XPU if the condition is true.
+class skipXPUIf(skipIf):
+
+    def __init__(self, dep, reason):
+        super().__init__(dep, reason, device_type='xpu')
+
 # Skips a test on XLA if the condition is true.
 class skipXLAIf(skipIf):
 
@@ -1135,6 +1143,22 @@ class onlyOn:
 
         return only_fn
 
+class onlyOnDevices:
+
+    def __init__(self, device_types: List[str]) -> None:
+        self.device_types = device_types
+
+    def __call__(self, fn):
+
+        @wraps(fn)
+        def only_on_devices_fn(slf, *args, **kwargs):
+            if slf.device_type not in self.device_types:
+                reason = f"Only runs on {self.device_type}"
+                raise unittest.SkipTest(reason)
+
+            return fn(slf, *args, **kwargs)
+
+        return only_on_devices_fn
 
 # Decorator that provides all available devices of the device type to the test
 # as a list of strings instead of providing a single device string.
@@ -1301,6 +1325,10 @@ def onlyCUDA(fn):
 def onlyMPS(fn):
     return onlyOn('mps')(fn)
 
+
+def onlyXPU(fn):
+    return onlyOn('xpu')(fn)
+
 def onlyPRIVATEUSE1(fn):
     device_type = torch._C._get_privateuse1_backend_name()
     device_mod = getattr(torch, device_type, None)
@@ -1355,6 +1383,9 @@ def expectedFailureMeta(fn):
 
 def expectedFailureXLA(fn):
     return expectedFailure('xla')(fn)
+
+def expectedFailureXPU(fn):
+    return expectedFailure('xpu')(fn)
 
 # Skips a test on CPU if LAPACK is not available.
 def skipCPUIfNoLapack(fn):
@@ -1533,10 +1564,18 @@ def skipXLA(fn):
 def skipMPS(fn):
     return skipMPSIf(True, "test doesn't work on MPS backend")(fn)
 
+def skipXPU(fn):
+    return skipXPUIf(True, "test doesn't work on XPU backend")(fn)
+
 def skipPRIVATEUSE1(fn):
     return skipPRIVATEUSE1If(True, "test doesn't work on privateuse1 backend")(fn)
 
 # TODO: the "all" in the name isn't true anymore for quite some time as we have also have for example XLA and MPS now.
 #  This should probably enumerate all available device type test base classes.
 def get_all_device_types() -> List[str]:
-    return ['cpu'] if not torch.cuda.is_available() else ['cpu', 'cuda']
+    device_types = ['cpu']
+    if torch.cuda.is_available():
+        device_types.append('cuda')
+    if torch.xpu.is_available():
+        device_types.append('xpu')
+    return device_types
