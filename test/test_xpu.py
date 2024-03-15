@@ -6,26 +6,30 @@ import unittest
 import torch
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
-    ops,
     onlyNativeDeviceTypes,
     onlyXPU,
     OpDTypes,
-    skipMeta)
+    ops,
+    skipMeta,
+)
 from torch.testing._internal.common_dtype import (
-    floating_and_complex_types_and,
     all_types_and_complex_and,
-    integral_types_and)
+    floating_and_complex_types_and,
+    integral_types_and,
+)
 from torch.testing._internal.common_methods_invocations import (
     ops_and_refs,
-    python_ref_db)
+    python_ref_db,
+)
 from torch.testing._internal.common_utils import (
     NoTest,
     run_tests,
     slowTest,
     suppress_warnings,
-    TEST_XPU,
     TEST_WITH_UBSAN,
-    TestCase)
+    TEST_XPU,
+    TestCase,
+)
 
 if not TEST_XPU:
     print("XPU not available, skipping tests", file=sys.stderr)
@@ -38,34 +42,36 @@ xpu_device = torch.device("xpu")
 
 any_common_cpu_xpu_one = OpDTypes.any_common_cpu_cuda_one
 _xpu_computation_op_list = [
-    'fill',
-    'zeros',
-    'zeros_like',
-    'clone',
-    'view_as_real',
-    'view_as_complex',
-    'view',
-    'resize_',
-    'resize_as_',
-    'add',
-    'sub',
-    'mul',
-    'div',
-    'abs',
-    ]
+    "fill",
+    "zeros",
+    "zeros_like",
+    "clone",
+    "view_as_real",
+    "view_as_complex",
+    "view",
+    "resize_",
+    "resize_as_",
+    "add",
+    "sub",
+    "mul",
+    "div",
+    "abs",
+]
 _xpu_tensor_factory_op_list = [
     "as_strided",
-    'empty',
-    'empty_strided',
-    ]
+    "empty",
+    "empty_strided",
+]
 _xpu_not_test_dtype_op_list = [
-    'resize_', # Skipped by CPU
-    'resize_as_', # Skipped by CPU
-    'abs', # Not aligned dtype
-    ]
+    "resize_",  # Skipped by CPU
+    "resize_as_",  # Skipped by CPU
+    "abs",  # Not aligned dtype
+]
 _xpu_all_op_list = _xpu_computation_op_list + _xpu_tensor_factory_op_list
 _xpu_all_ops = [op for op in ops_and_refs if op.name in _xpu_all_op_list]
-_xpu_computation_ops = [op for op in ops_and_refs if op.name in _xpu_computation_op_list]
+_xpu_computation_ops = [
+    op for op in ops_and_refs if op.name in _xpu_computation_op_list
+]
 _xpu_dtype_op_list = _xpu_all_op_list
 for op in _xpu_not_test_dtype_op_list:
     _xpu_dtype_op_list.remove(op)
@@ -192,7 +198,7 @@ if __name__ == "__main__":
     def test_compare_cpu(self, device, dtype, op):
         def to_cpu(arg):
             if isinstance(arg, torch.Tensor):
-                return arg.to(device='cpu')
+                return arg.to(device="cpu")
             return arg
 
         samples = op.reference_inputs(device, dtype)
@@ -220,7 +226,9 @@ if __name__ == "__main__":
                 return x
 
             # Map False -> 0 and True -> Random value in [2, 255]
-            true_vals = torch.randint(2, 255, x.shape, dtype=torch.uint8, device=x.device)
+            true_vals = torch.randint(
+                2, 255, x.shape, dtype=torch.uint8, device=x.device
+            )
             false_vals = torch.zeros((), dtype=torch.uint8, device=x.device)
             x_int = torch.where(x, true_vals, false_vals)
 
@@ -309,8 +317,11 @@ if __name__ == "__main__":
 
                     return False
 
-                requires_grad = _tensor_requires_grad(sample.input) \
-                    or _tensor_requires_grad(sample.args) or _tensor_requires_grad(sample.kwargs)
+                requires_grad = (
+                    _tensor_requires_grad(sample.input)
+                    or _tensor_requires_grad(sample.args)
+                    or _tensor_requires_grad(sample.kwargs)
+                )
                 if not requires_grad:
                     continue
 
@@ -426,7 +437,9 @@ if __name__ == "__main__":
                 )
             )
 
-        all_claimed_but_unsupported = set.union(claimed_but_unsupported_backward, claimed_but_unsupported_forward)
+        all_claimed_but_unsupported = set.union(
+            claimed_but_unsupported_backward, claimed_but_unsupported_forward
+        )
         if all_claimed_but_unsupported:
             msg += "Unexpected failures raised the following errors:\n"
             for dtype in all_claimed_but_unsupported:
@@ -438,7 +451,10 @@ if __name__ == "__main__":
     @onlyXPU
     @skipMeta
     @onlyNativeDeviceTypes
-    @ops((op for op in _xpu_all_ops if op.promotes_int_to_float), allowed_dtypes=integral_types_and(torch.bool))
+    @ops(
+        (op for op in _xpu_all_ops if op.promotes_int_to_float),
+        allowed_dtypes=integral_types_and(torch.bool),
+    )
     def test_promotes_int_to_float(self, device, dtype, op):
         for sample in op.sample_inputs(device, dtype):
             output = op(sample.input, *sample.args, **sample.kwargs)
@@ -446,6 +462,7 @@ if __name__ == "__main__":
                 self.fail(
                     f"The OpInfo sets `promotes_int_to_float=True`, but {dtype} was promoted to {output.dtype}."
                 )
+
 
 instantiate_device_type_tests(TestXpu, globals())
 
