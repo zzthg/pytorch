@@ -15,7 +15,9 @@ from torch.testing._internal.common_dtype import (
     floating_and_complex_types_and,
     all_types_and_complex_and,
     integral_types_and)
-from torch.testing._internal.common_methods_invocations import ops_and_refs
+from torch.testing._internal.common_methods_invocations import (
+    ops_and_refs,
+    python_ref_db)
 from torch.testing._internal.common_utils import (
     NoTest,
     run_tests,
@@ -56,9 +58,18 @@ _xpu_tensor_factory_op_list = [
     'empty',
     'empty_strided',
     ]
+_xpu_not_test_dtype_op_list = [
+    'resize_', # Skipped by CPU
+    'resize_as_', # Skipped by CPU
+    'abs', # Not aligned dtype
+    ]
 _xpu_all_op_list = _xpu_computation_op_list + _xpu_tensor_factory_op_list
 _xpu_all_ops = [op for op in ops_and_refs if op.name in _xpu_all_op_list]
 _xpu_computation_ops = [op for op in ops_and_refs if op.name in _xpu_computation_op_list]
+_xpu_dtype_op_list = _xpu_all_op_list
+for op in _xpu_not_test_dtype_op_list:
+    _xpu_dtype_op_list.remove(op)
+_xpu_dtype_ops = [op for op in ops_and_refs if op.name in _xpu_dtype_op_list]
 
 
 class TestXpu(TestCase):
@@ -227,8 +238,7 @@ if __name__ == "__main__":
 
     @onlyXPU
     @skipMeta
-    @onlyNativeDeviceTypes
-    @ops(_xpu_all_ops, dtypes=OpDTypes.none)
+    @ops(_xpu_dtype_ops, dtypes=OpDTypes.none)
     def test_dtypes(self, device, op):
         # Check complex32 support only if the op claims.
         # TODO: Once the complex32 support is better, we should add check for complex32 unconditionally.
