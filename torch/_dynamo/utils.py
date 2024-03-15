@@ -300,11 +300,11 @@ def compile_times(repr="str", aggregate=False):
 
     if repr == "str":
         rows = [
-            (k, fmt_fn(compilation_time_metrics[k], item_fn=lambda x: f"{x:.4f}"))
+            (fmt_fn(compilation_time_metrics[k], item_fn=lambda x: f"{x:.4f}"),)
             for k in compilation_time_metrics
         ]
         out = "TorchDynamo compilation metrics:\n"
-        out += tabulate(rows, headers=("Function", "Runtimes (s)"))
+        out += tabulate(rows, headers=("Runtimes (s)",))
         return out
     elif repr == "csv":
         values = [
