@@ -1,6 +1,7 @@
 import sympy
-from sympy import S
+from sympy import S, Q
 from sympy.core.logic import fuzzy_and, fuzzy_not, fuzzy_or
+from typing import Tuple
 
 __all__ = [
     "FloorDiv", "ModularIndexing", "CleanDiv", "CeilDiv", "Pow", "TrueDiv",
@@ -309,6 +310,9 @@ class IsNonOverlappingAndDenseIndicator(sympy.Function):
     def eval(cls, *args):
         assert len(args) % 2 == 0
         dim = len(args) // 2
+
+        sizes, strides = args[:dim], args[dim:]
+
         # TODO: it is possible to make progress evaluating this guard
         # even if not all of the inputs are known.  For example, a 2D
         # tensor with non-0/1 sizes but strides (0, 1) is definitely
@@ -318,12 +322,73 @@ class IsNonOverlappingAndDenseIndicator(sympy.Function):
             # sym_node imported in torch.__init__. Local import to avoid an import cycle
             from torch.fx.experimental.symbolic_shapes import eval_is_non_overlapping_and_dense
 
-            size_args = args[0:dim]
-            stride_args = args[dim:]
             return eval_is_non_overlapping_and_dense(
-                [int(a) for a in size_args],
-                [int(a) for a in stride_args]
+                [int(a) for a in sizes],
+                [int(a) for a in strides]
             )
+        elif all(isinstance(a, sympy.Expr) for a in strides):
+            import functools
+            def assume_size_like(symbols):
+                if len(symbols) == 0:
+                    return True
+                from operator import and_
+                assumptions = (Q.nonnegative(sym) & Q.integer(sym) for sym in symbols)
+                return functools.reduce(and_, assumptions)
+
+            def optimistic_sort(left: Tuple[sympy.Expr, ...], right: Tuple[sympy.Expr, ...]):
+                left_size, right_size = left[0], right[0]
+
+                if sympy.ask(left_size < 2, assume_size_like(left_size.free_symbols)):
+                    return -1
+                if sympy.ask(right_size < 2, assume_size_like(right_size.free_symbols)):
+                    return 1
+
+                left_stride, right_stride = left[1], right[1]
+                res = sympy.ask(left_stride < right_stride, assume_size_like(left_stride.free_symbols | right_stride.free_symbols))
+                print(f"strides: {left_stride} < {right_stride} = {res}")
+
+
+                bool2val = {True: 1, None: 0, False: -1}
+                if res is None:
+                    _res = sympy.ask(left_stride >= right_stride, assume_size_like(left_stride.free_symbols | right_stride.free_symbols))
+                    print(f"--strides: {left_stride} <= {right_stride} = {_res}")
+                    return bool2val[_res]
+
+                return bool2val[res]
+
+            try:
+                print([(sizes, strides) for sizes, strides in zip(sizes, strides)])
+                lengths_and_strides = sorted(
+                    zip(sizes, strides), key=functools.cmp_to_key(optimistic_sort)
+                )
+                print(lengths_and_strides)
+            except (ValueError, TypeError):
+                # Sympy could not
+                return None
+
+            # Copy from Ed's first shot
+            # https://gist.github.com/ezyang/10c8a5ac4bdb452bee119755ca6741d4
+            expected_stride = 1
+            for length, stride in lengths_and_strides:
+                if length == 1:  # refutable
+                    continue
+
+                if expected_stride is None:
+                    print('None')
+                    return None
+
+                if stride != expected_stride:
+                    print(f'{stride} != {expected_stride}')
+                    return 0
+
+                if isinstance(length, sympy.Expr):
+                    print(length, expected_stride)
+                    expected_stride *= length
+                    print(length, expected_stride)
+                else:
+                    expected_stride = -1
+            return 1
+
         return None
 
 
