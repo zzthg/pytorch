@@ -1341,7 +1341,11 @@ void int8_gemm(
       mat2_ptr,
       Bdesc.descriptor(),
       &beta_val,
+#ifdef USE_ROCM
       result_ptr,
+#else
+      nullptr,
+#endif
       Cdesc.descriptor(),
       result_ptr,
       Cdesc.descriptor(),
