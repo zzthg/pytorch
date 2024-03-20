@@ -4319,6 +4319,48 @@ class CommonTemplate:
             ),
         )
 
+    @torch._dynamo.config.patch(capture_dynamic_output_shape_ops=True)
+    def test_nonzero_unbacked_refinement(self):
+        # It is kind of cursed that this test currently passes.
+        #
+        # The problem that this test is trying to test for is
+        # that we have performed a refinement on the unbacked SymInt
+        # replacing u0 == 4.  When this occurs, we could potentially
+        # have a problem in Inductor lowering where we replace u0 with 4
+        # and then be unable to codegen the runtime assert (since even
+        # though all occurrences of u0 can be validly replaced with 4,
+        # you can't do this for the runtime assert that actually tests u0 ==
+        # 4!)
+        #
+        # So how come this test actually passes?  It's because of the symbol
+        # reallocation problem.  When we retrace the Dynamo output graph
+        # in AOTAutograd, we allocate a new symbol u1 when we rerun nonzero.
+        # Ordinarily, we would then immediately unify u0 == u1, replacing u1
+        # with u0.  But because u0 has been refined to a constant, we don't
+        # perform the equality.  And then because _constrain_symbol_range
+        # u1 to [4, 4] doesn't cause refinement to 4, u1 actually survives
+        # and doesn't have a refinement, unlike u0.  Since it's survived,
+        # codegen works fine.
+        #
+        # If any of these things change, this test will break.  But it's not
+        # you, it's the existing code.
+        #
+        # As of Mar 2024, ezyang is not sure what the right way to structure
+        # this code is.
+
+        def fn(x):
+            z = x.nonzero()
+            torch._check(z.size(0) == 4)
+            return z + 3
+
+        self.common(
+            fn,
+            (torch.tensor([0, 1, 3, 4, 2, 0, 0]),),
+        )
+
+        with self.assertRaises(RuntimeError):
+            torch.compile(fn)(torch.tensor([0, 0, 0, 0]))
+
     @torch._dynamo.config.patch(capture_scalar_outputs=True)
     def test_cat_unbacked_legacy_empty(self):
         def fn(x, y):

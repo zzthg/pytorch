@@ -2705,7 +2705,9 @@ def _local_scalar_dense(data):
     # solely responsible for generating this .item().  The buffer is
     # not used for anything (notice we discard it); at codegen time,
     # the "buffer" just gets assigned None.
-    sym = V.graph.current_node.meta["val"].node.expr
+    #
+    # NB: Use the un-simplified unbacked SymInt here, this is a binding site!
+    sym = V.graph.current_node.meta["val"].node._expr
     buffer = ir.DynamicScalar(sym, data)
     buffer.name = V.graph.register_buffer(buffer)
     return sym
@@ -5868,9 +5870,16 @@ register_inplace(aten.__ixor__, aten.__xor__)
 def sym_constrain_range(a, min=None, max=None):
     tracing_context = torch._guards.TracingContext.try_get()
     assert (
-        tracing_context is None or a in tracing_context.fake_mode.shape_env.var_to_range
+        tracing_context is None
+        or
+        # If the symbol has already been refined at this point, we'll
+        # just assume that the range in question has already been taken
+        # care of in a way we can't easily test in this assert.  But this
+        # is kind of cursed, see test_nonzero_unbacked_refinement for more
+        # info.
+        not isinstance(a, sympy.Symbol)
+        or a in tracing_context.fake_mode.shape_env.var_to_range
     )
-    return a
 
 
 @register_lowering(aten.sym_size.int)
