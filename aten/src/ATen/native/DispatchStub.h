@@ -324,14 +324,12 @@ struct RegisterPRIVATEUSE1Dispatch {
 #elif defined(CPU_CAPABILITY)
 // REGISTER_DISPATCH now dispatches an AVX512 kernel to nullptr but registers other dispatches.
 // ALSO_REGISTER_AVX512_DISPATCH should be used for ensuring AVX512 dispatch, among others.
-// ALSO_REGISTER_SVE256_DISPATCH should be used for ensuring SVE256 dispatch, among others.
-#if defined(CPU_CAPABILITY_AVX512)
+#ifdef CPU_CAPABILITY_AVX512
 #define REGISTER_DISPATCH(name, fn) REGISTER_ARCH_DISPATCH(name, CPU_CAPABILITY, nullptr)
 #else
 #define REGISTER_DISPATCH(name, fn) REGISTER_ARCH_DISPATCH(name, CPU_CAPABILITY, fn)
 #endif
 #define ALSO_REGISTER_AVX512_DISPATCH(name, fn) REGISTER_ARCH_DISPATCH(name, CPU_CAPABILITY, fn)
-#define ALSO_REGISTER_SVE256_DISPATCH(name, fn) REGISTER_ARCH_DISPATCH(name, CPU_CAPABILITY, fn)
 #endif
 } // namespace at::native
 

@@ -26,10 +26,12 @@ static CPUCapability compute_cpu_capability() {
     if (strcmp(envar, "zvector") == 0) {
       return CPUCapability::ZVECTOR;
     }
-#elif HAVE_SVE256_CPU_DEFINITION
+#elif defined(HAVE_SVE_CPU_DEFINITION)
+#ifdef HAVE_SVE256_CPU_DEFINITION
     if (strcmp(envar, "sve256") == 0) {
       return CPUCapability::SVE256;
     }
+#endif
 #else
 #ifdef HAVE_AVX512_CPU_DEFINITION
     if (strcmp(envar, "avx512") == 0) {
@@ -69,7 +71,6 @@ static CPUCapability compute_cpu_capability() {
 #endif
 #if defined(__linux__) && defined(HAVE_SVE_CPU_DEFINITION)
   if (cpuinfo_initialize()) {
-    if (cpuinfo_has_arm_sve()) {
       int ret = prctl(PR_SVE_GET_VL);
       if (ret < 0) {
         if (errno == EINVAL) {
@@ -89,7 +90,6 @@ static CPUCapability compute_cpu_capability() {
         }
         #endif
       }
-    }
   }
 #endif
 #ifdef HAVE_VSX_CPU_DEFINITION
