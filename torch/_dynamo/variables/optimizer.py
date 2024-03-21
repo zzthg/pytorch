@@ -76,7 +76,7 @@ class OptimizerVariable(UserDefinedObjectVariable):
         kwargs: "Dict[str, VariableTracker]",
     ) -> "VariableTracker":
         """This is an optimization to avoid tracing the very slow initialization of the optimizer"""
-        if name == "_init_group":
+        if name == "":
             try:
                 py_args, py_kwargs = self.get_python_args(*args, **kwargs)
                 ret_val = self.value._init_group(*py_args, **py_kwargs)
@@ -108,13 +108,21 @@ class OptimizerVariable(UserDefinedObjectVariable):
                     "Optimizer step with closure not supported by torch.compile()"
                 )
 
+        if name == "init_state_per_param":
+            breakpoint()
+            self.value.init_state_per_param(
+                self.value.param_groups[0]["params"][args[0].source.index],
+                self.value.param_groups[0],
+            )
+            return ConstantVariable.create(None)
+
         return super().call_method(tx, name, args, kwargs)
 
     def var_getattr(self, tx, name):
         # Note: this allows us to intercept the call in call_method
         # in the typical case, we return a UserMethodVariable
         # which will directly inline
-        if name in ("_init_group", "step"):
+        if name in ("init_state_per_param",):
             return GetAttrVariable(self, name, source=AttrSource(self.source, name))
 
         return super().var_getattr(tx, name)
