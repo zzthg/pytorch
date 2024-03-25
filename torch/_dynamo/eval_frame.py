@@ -1468,8 +1468,8 @@ class TorchPatcher:
             if opt in excluded_optimizer_classes:
                 opt.step = disable(opt.step)
 
-            if hasattr(opt, "_init_group"):
-                opt._init_group = disable(opt._init_group)
+            # if hasattr(opt, "_init_group"):
+            #    opt._init_group = disable(opt._init_group)
 
     @staticmethod
     def suppress_torch_distributed_warnings(fn):

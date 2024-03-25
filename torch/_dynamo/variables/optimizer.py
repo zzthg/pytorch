@@ -83,7 +83,29 @@ class OptimizerVariable(UserDefinedObjectVariable):
         kwargs: "Dict[str, VariableTracker]",
     ) -> "VariableTracker":
         """This is an optimization to avoid tracing the very slow initialization of the optimizer"""
-        if name == "_init_group":
+        from ..decorators import mark_static_address
+
+        if name == "init_state_per_param":
+            from .builder import VariableBuilder
+
+            py_state_key = self.value.param_groups[0]["params"][args[0].source.index]
+            self.value.init_state_per_param(py_state_key, self.value.param_groups[0])
+            for value in self.value.state[py_state_key].values():
+                if isinstance(value, torch.Tensor):
+                    mark_static_address(value, guard=False)
+            state_var = VariableBuilder(tx, AttrSource(self.source, "state"))(
+                self.value.state
+            )
+            value_var = VariableBuilder(
+                tx,
+                GetItemSource(
+                    state_var.source,
+                    ConstDictKeySource(state_var.source, len(self.value.state) - 1),
+                ),
+            )(self.value.state[py_state_key])
+            state_var.call_method(tx, "__setitem__", [args[0], value_var], {})
+            return ConstantVariable.create(None)
+        if name == "":
             try:
                 py_args, py_kwargs = self.get_python_args(*args, **kwargs)
                 ret_val = self.value._init_group(*py_args, **py_kwargs)
@@ -121,7 +143,7 @@ class OptimizerVariable(UserDefinedObjectVariable):
         # Note: this allows us to intercept the call in call_method
         # in the typical case, we return a UserMethodVariable
         # which will directly inline
-        if name in ("_init_group", "step"):
+        if name in ("_init_group", "step", "init_state_per_param"):
             return GetAttrVariable(self, name, source=AttrSource(self.source, name))
 
         return super().var_getattr(tx, name)
@@ -225,6 +247,7 @@ class OptimizerVariable(UserDefinedObjectVariable):
         elif tensor_value in self.grad_to_source:
             builder = VariableBuilder(tx, self.grad_to_source[tensor_value])
         else:
+            breakpoint()
             # mark these tensors as static for cudagraphs
             mark_static_address(tensor_value, guard=False)
 
