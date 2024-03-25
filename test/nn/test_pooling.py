@@ -884,6 +884,7 @@ torch.cuda.synchronize()
     @dtypes(torch.half, torch.bfloat16, torch.float, torch.double)
     @dtypesIfCUDA(torch.half, torch.float, torch.double)
     @gcIfJetson
+    @serialTest(TEST_CUDA)
     def test_max_pool2d_nhwc(self, device, dtype):
         def helper(n, c, h, w, kernel_size, stride=None):
             if stride is None:
@@ -1494,6 +1495,7 @@ torch.cuda.synchronize()
 
     @onlyCUDA
     @largeTensorTest('6GB')
+    @serialTest()
     def test_pooling_large(self, device):
         def helper(pool):
             inp = torch.randn(2**7 + 10, 2**8, 2**8, 2**8, dtype=torch.half, device="cuda")
