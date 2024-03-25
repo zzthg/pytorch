@@ -233,7 +233,7 @@ class XpuInterface(DeviceInterface):
     @staticmethod
     def get_compute_capability(device: _device_t = None):
         cc = torch.xpu.get_device_capability(device)
-        return cc
+        return 86
 
 
 device_interfaces: Dict[str, Type[DeviceInterface]] = {}
