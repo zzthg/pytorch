@@ -305,11 +305,6 @@ def _create_cpu_state_dict(
     tensors can be placed on pin_memory or share_memory based on the provided arguments.
     """
 
-    if pin_memory and share_memory:
-        raise ValueError(
-            "Cannot allocate both memory on both pin_memory and share_memory"
-        )
-
     def tensor_func(
         obj: torch.Tensor,
         pg: Optional[dist.ProcessGroup],
@@ -320,13 +315,25 @@ def _create_cpu_state_dict(
             return torch.tensor(0, dtype=obj.dtype)
 
         if share_memory:
-            return torch.empty(
+            t = torch.empty(
                 *tuple(companion_obj.size()), dtype=companion_obj.dtype
             ).share_memory_()
-        else:
+            if pin_memory:
+                succ = torch.cuda.cudart().cudaHostRegister(
+                    t.data_ptr(),
+                    t.numel() * t.element_size(),
+                    1 # lines up with 'cudaHostRegisterPortable'
+                )
+                assert succ == 0, f"Pinning shared memory failed with {succ}"
+            return t
+        elif pin_memory:
             return torch.empty(
                 *tuple(companion_obj.size()), dtype=companion_obj.dtype
             ).pin_memory()
+        else:
+            return torch.empty(
+                *tuple(companion_obj.size()), dtype=companion_obj.dtype
+            )
 
     ret = _iterate_state_dict(
         state_dict,
