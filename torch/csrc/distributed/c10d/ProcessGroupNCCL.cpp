@@ -1207,26 +1207,6 @@ ProcessGroupNCCL::~ProcessGroupNCCL() {
     ncclCommWatchdogThread_.join();
     LOG(INFO) << logPrefix() << "ProcessGroupNCCL watchdog thread joined.";
   }
-<<<<<<< HEAD
-  LOG(INFO) << logPrefix() << "ProcessGroupNCCL watchdog thread joined.";
-#endif
-
-  if (onCompletionHookThread_.joinable())
-    onCompletionHookThread_.join();
-
-  // Abort communicators after all threads have exited to avoid having the
-  // threads dying due to aborted communicator and raising a SIGABRT
-  std::string abortReason = c10::str("Process Group destroyed on rank ", rank_);
-  abort(abortReason);
-  LOG(INFO) << logPrefix() << "ProcessGroupNCCL abort finished.";
-
-  // We need to wait for abort to finish before we can safely shut down
-  // heartbeat monitoring thread.
-  terminateHeartbeatMonitorThread_.store(true);
-  monitorWakeUpCV_.notify_one();
-#ifdef ENABLE_NCCL_ERROR_CHECKING
-=======
->>>>>>> 893dcac068f ([c10d] explicitly abort communicators in destroy_process_group call (#119250))
   if (ncclHeartbeatMonitorThread_.joinable()) {
     ncclHeartbeatMonitorThread_.join();
     LOG(INFO) << logPrefix()
@@ -1346,12 +1326,32 @@ void ProcessGroupNCCL::heartbeatMonitor() {
               coordCheckIntervalMilSec_) {
         lastTimePollStore = currentTime;
         if (globalStore_->check({std::string(TIMEOUT_DUMP)})) {
+          int timeOutRank = -1;
+          try {
+            auto vec = globalStore_->get(std::string(TIMEOUT_DUMP));
+            TORCH_CHECK_WITH(
+                DistBackendError,
+                vec.size() == sizeof(int),
+                "Invalid size for the timeout rank ID");
+            std::memcpy(&timeOutRank, vec.data(), vec.size());
+          } catch (const std::exception& e) {
+            LOG(ERROR)
+                << "Failed to get timeout rank ID from the global store.";
+          }
           errorMsg = c10::str(
               logPrefix(),
-              "Received a global timeout from another rank and will ",
-              "start to dump the debug info.");
+              "Received a global timeout signal from rank ",
+              timeOutRank,
+              ", and will start to dump the debug info. ",
+              "Last enqueued NCCL work: ",
+              lastEnqueuedSeq_,
+              ", last completed NCCL work: ",
+              lastCompletedSeq_,
+              ".");
           exitMsg = c10::str(
-              "ProcessGroupNCCL's watchdog detected a collective timeout on some other rank and notified current rank. ",
+              "ProcessGroupNCCL's watchdog detected a collective timeout signal from rank ",
+              timeOutRank,
+              " and notified the current rank. ",
               "This is most likely caused by incorrect usages of collectives, e.g., wrong ",
               "sizes used across ranks, the order of collectives is not same for all ranks ",
               "or the scheduled collective, for some reason, didn't run. Additionally, ",
@@ -1598,7 +1598,10 @@ void ProcessGroupNCCL::watchdogHandler() {
               // Set shutdown mode, so the heartbeat monitor thread will not
               // abort process immediately.
               collectiveDebugInfoMode_.store(true);
-              std::vector<uint8_t> vec(1);
+              auto rank = globalRank();
+              auto vec = std::vector<uint8_t>(
+                  reinterpret_cast<uint8_t*>(&rank),
+                  reinterpret_cast<uint8_t*>(&rank) + sizeof(rank));
               globalStore_->set(std::string(TIMEOUT_DUMP), vec);
             }
 
