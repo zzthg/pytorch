@@ -526,17 +526,18 @@ class GraphModuleSerializer:
                 else:
                     normalized_ty = ty.__module__ + "." + ty.__qualname__
 
-                return path + "," + normalized_ty
+                return path + "|" + normalized_ty
 
-            # Serialize to "key,orig_path,type_str"
+            # Serialize to "key|orig_path|type_str"
             nn_module_list = [
-                f"{k},{export_nn_module_stack(v)}" for k, v in nn_module_stack.items()
+                f"{k}|{export_nn_module_stack(v)}" for k, v in nn_module_stack.items()
             ]
             ret["nn_module_stack"] = ST_DELIMITER.join(nn_module_list)
 
         if source_fn_st := node.meta.get("source_fn_stack"):
+            # Serialize to "fx_node_name|op_str"
             source_fn_list = [
-                f"{source_fn[0]},{self.serialize_operator(source_fn[1])}"
+                f"{source_fn[0]}|{self.serialize_operator(source_fn[1])}"
                 for source_fn in source_fn_st
             ]
             ret["source_fn_stack"] = ST_DELIMITER.join(source_fn_list)
@@ -1969,21 +1970,21 @@ class GraphModuleDeserializer:
             return target
 
         if nn_module_stack_str := metadata.get("nn_module_stack"):
-            # Originally serialized to "key,orig_path,type_str"
+            # Originally serialized to "key|orig_path|type_str"
             def import_nn_module_stack(key, path, ty):
                 return key, (path, ty)
 
             nn_module_stack = dict(
-                import_nn_module_stack(*item.split(","))
+                import_nn_module_stack(*item.split("|"))
                 for item in nn_module_stack_str.split(ST_DELIMITER)
             )
             ret["nn_module_stack"] = nn_module_stack
 
         if source_fn_st_str := metadata.get("source_fn_stack"):
-            # Originally serializes to "fx_node_name,op_str"
+            # Originally serializes to "fx_node_name|op_str"
             source_fn_st = []
             for source_fn_str in source_fn_st_str.split(ST_DELIMITER):
-                name, target_str = source_fn_str.split(",")
+                name, target_str = source_fn_str.split("|")
                 source_fn_st.append((name, deserialize_meta_func(target_str)))
             ret["source_fn_stack"] = source_fn_st
         return ret
