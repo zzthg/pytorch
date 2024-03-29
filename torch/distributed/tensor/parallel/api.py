@@ -88,17 +88,38 @@ def parallelize_module(  # type: ignore[return]
         return parallelize_plan._apply(module, device_mesh)
     elif isinstance(parallelize_plan, dict):
         for module_path, parallelize_style in parallelize_plan.items():
-            sub_module = module.get_submodule(module_path)
-            parent_module = module
-            if "." in module_path:
-                path_splits = module_path.split(".")
-                parent_module_path = ".".join(path_splits[:-1])
-                parent_module = module.get_submodule(parent_module_path)
-                module_path = path_splits[-1]
+            parent_module = leaf_module = module
+            path_splits = module_path.split(".")
+            if len(path_splits) == 0:
+                raise RuntimeError(
+                    "Expect module path to be non-empty, but got empty string!"
+                )
+            atom: str = ""
+            while path_splits:
+                atom = path_splits.pop(0)
+                if atom == "*":
+                    # Rest of the path after "*"
+                    leaf_path = ".".join(path_splits)
+                    # recursively apply the plan to all submodules
+                    for submodule in parent_module.children():  # corresponds to "*"
+                        if leaf_path:
+                            # we haven't reached the leaf, apply in dict style
+                            parallelize_module(submodule, device_mesh, {leaf_path: parallelize_style})
+                        else:
+                            # otherwise, directly apply style
+                            parallelize_module(submodule, device_mesh, parallelize_style)
+                else:
+                    # proceed in depth
+                    parent_module = leaf_module
+                    leaf_module = leaf_module.get_submodule(atom)
+
+            # When `path_split` is empty, `leaf_module` should point to the target.
+            # Thus we apply the plan to the target module.
+            assert len(atom) > 0, "we should have entered the while loop at least once"
             parent_module.register_module(  # type: ignore[call-arg] # pyre-ignore[20]
-                module_path,
+                atom,
                 parallelize_module(  # type: ignore[arg-type]
-                    sub_module, device_mesh, parallelize_style  # type: ignore[arg-type] # pyre-ignore[6]
+                    leaf_module, device_mesh, parallelize_style  # type: ignore[arg-type] # pyre-ignore[6]
                 ),
             )
         return module
