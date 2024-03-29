@@ -922,6 +922,13 @@ class OrtBackend:
                 opset_version=self._resolved_onnx_exporter_options.onnx_registry.opset_version,
             )
 
+            # TODO: Make this part of `dynamo_export` call.
+            from onnxrewriter import optimizer
+            from onnxrewriter.rewriter import onnxruntime as ort_rewriter
+
+            onnx_model = optimizer.optimize(onnx_model)
+            onnx_model = ort_rewriter.rewrite(onnx_model)
+
             # Modify ONNX model using pre-registered graph transforms.
             # They are in-place modifications for avoiding unnecessary
             # copy of ONNX initializers.
