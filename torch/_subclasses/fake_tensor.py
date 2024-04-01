@@ -762,6 +762,7 @@ class FakeTensorMode(TorchDispatchMode):
         shape_env=None,
         static_shapes=None,
         _allow_unsafe_data_ptr_access=True,
+        avoid_device_init=False,
     ):
         log.debug("create_mode 0x%x", id(self))
         self._allow_unsafe_data_ptr_access = _allow_unsafe_data_ptr_access
@@ -812,6 +813,13 @@ class FakeTensorMode(TorchDispatchMode):
         # this is an "infra" mode with lower dispatching precedence.
         self._mode_key = torch._C._TorchDispatchModeKey.FAKE
 
+        # If we should avoid device init. This changes the behavior of various APIs:
+        # - We avoid constant-prop on Tensors with ops that move them to another device
+        # - We change the torch.tensor ctor contract to never materialize
+        #   tensors on device
+        #   (see NOTE: [torch.tensor, lift_fresh, and device movement])
+        self.avoid_device_init = avoid_device_init
+
     # Typically, there is only one fake tensor mode and you test for it by
     # doing an isinstance test.  However, in some situations, there might be
     # TWO fake tensor modes.  The canonical example of this is exporting
@@ -841,23 +849,30 @@ class FakeTensorMode(TorchDispatchMode):
 
     # No-op if FakeTensorMode is already in use
     def __enter__(self):
+        prev_lift_then_h2d = None
+        if self.avoid_device_init:
+            # See NOTE: [torch.tensor, lift_fresh, and device movement]
+            prev_lift_then_h2d = torch._C._get_lift_then_h2d()
+            torch._C._set_lift_then_h2d(True)
         maybe_prev_fake_mode = torch._C._unset_dispatch_mode(self._mode_key)
         if self is not maybe_prev_fake_mode:
-            self.enter_stack.append((True, maybe_prev_fake_mode))
+            self.enter_stack.append((True, maybe_prev_fake_mode, prev_lift_then_h2d))
             return super().__enter__()
         else:
             # no-op (still need to re-set the fake mode though since we unset it)
             torch._C._set_dispatch_mode(self)
-            self.enter_stack.append((False, None))
+            self.enter_stack.append((False, None, prev_lift_then_h2d))
         return self
 
     def __exit__(self, a, b, c):
-        live, maybe_prev_fake_mode = self.enter_stack.pop()
+        live, maybe_prev_fake_mode, maybe_prev_lift_then_h2d = self.enter_stack.pop()
         if live:
             out = super().__exit__(a, b, c)
             # Re-enable the previous fake mode, if there was one.
             if maybe_prev_fake_mode is not None:
                 torch._C._set_dispatch_mode(maybe_prev_fake_mode)
+            if maybe_prev_lift_then_h2d is not None:
+                torch._C._set_lift_then_h2d(maybe_prev_lift_then_h2d)
 
     @classmethod
     def cache_info(cls) -> DispatchCacheInfo:
@@ -1254,6 +1269,15 @@ class FakeTensorMode(TorchDispatchMode):
             if type(args[0]) is torch.Tensor:
                 return converter.from_real_tensor(self, args[0])
 
+        # If we are trying to avoid device init, then we need to avoid constant
+        # prop on constant tensors for ops that change devices.
+        avoiding_device_init = False
+        if self.avoid_device_init:
+            if func == torch.ops.aten._to_copy.default and "device" in kwargs:
+                avoiding_device_init = True
+            if func == torch.ops.prims.device_put.default:
+                avoiding_device_init = True
+
         # Recompute flat_arg_fake_tensors here again in case some of the inputs
         # were real tensors and fakified in validate_and_convert_non_fake_tensors
         (flat_args, flat_arg_fake_tensors) = self.validate_and_convert_non_fake_tensors(
@@ -1278,6 +1302,7 @@ class FakeTensorMode(TorchDispatchMode):
             and all_constant
             and len(flat_arg_fake_tensors) != 0
             and not has_symbolic_sizes
+            and not avoiding_device_init
         ):
             const_flat_args = [maybe_to_constant(a) for a in flat_args]
             const_args, const_kwargs = pytree.tree_unflatten(const_flat_args, args_spec)
