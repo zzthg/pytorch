@@ -1250,11 +1250,11 @@ ConvBackend _select_conv_backend(
     return ConvBackend::Winograd3x3Depthwise;
   } else if (
       !params.transposed && (input.ndimension() == 5) &&
-      (input.device().is_cpu()) &&
+      (input.device().is_cpu() || input.is_xpu()) &&
       !params.is_dilated()) {
     // fast path for grouped conv3d
     return ConvBackend::Slow3d;
-  } else if (input.device().is_cpu() || input.is_cuda()) {
+  } else if (input.device().is_cpu() || input.is_cuda() || input.is_xpu()) {
     // backends without support for groups
     if (params.transposed) {
       if (input.ndimension() == 4) {
@@ -1331,7 +1331,7 @@ ConvBackend select_conv_backend(
 
   // Expand 1d -> 2d.
   // This is only done for backends that don't natively support 1d spatial input.
-  if (k == 3 && !input.is_mkldnn() && !input.is_xpu()) {
+  if (k == 3 && !input.is_mkldnn() ) {
     // avoid accidentally going through NHWC for permuted 3d input.
     input = input.contiguous();
     params.view1d_as_2d();
@@ -1495,7 +1495,7 @@ at::Tensor _convolution(
 
   // Expand 1d -> 2d.
   // This is only done for backends that don't natively support 1d spatial input.
-  if (k == 3 && !input.is_mkldnn() && !input.is_xpu()) {
+  if (k == 3 && !input.is_mkldnn() ) {
     // avoid accidentally going through NHWC for permuted 3d input.
     input = input.contiguous();
     params.view1d_as_2d();
@@ -1693,7 +1693,7 @@ at::Tensor _convolution(
       break;
   }
 
-  if (k == 3 && !input.is_mkldnn() && !input.is_xpu()) {
+  if (k == 3 && !input.is_mkldnn() ) {
     output = view3d(output);
   }
 
@@ -2028,7 +2028,7 @@ std::tuple<Tensor, Tensor, Tensor> convolution_backward(
 
   // Expand 1d -> 2d.
   // This is only done for backends that don't natively support 1d spatial input.
-  if (k == 3 && !input.is_mkldnn() && !input.is_xpu()) {
+  if (k == 3 && !input.is_mkldnn() ) {
     // avoid accidentally going through NHWC for permuted 3d input.
     input = input.contiguous();
     params.view1d_as_2d();
@@ -2255,12 +2255,12 @@ std::tuple<Tensor, Tensor, Tensor> convolution_backward(
   // Convert 2D inputs back to 1D for backends that don't natively support 1D
   // spatial inputs.
   if (output_mask[0]) {
-    if (k == 3 && !input.is_mkldnn() && !input.is_xpu()) {
+    if (k == 3 && !input.is_mkldnn() ) {
       backend_grad_input = view3d(backend_grad_input);
     }
   }
   if (output_mask[1]) {
-    if (k == 3 && !input.is_mkldnn() && !input.is_xpu()) {
+    if (k == 3 && !input.is_mkldnn() ) {
       backend_grad_weight = view3d(backend_grad_weight);
     }
   }
