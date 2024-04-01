@@ -81,6 +81,19 @@ def _use_grad_for_differentiable(func):
     functools.update_wrapper(_use_grad, func)
     return _use_grad
 
+def _disable_dynamo_if_closure(fn):
+    def inner(self, *args, **kwargs):
+        @torch._disable_dynamo
+        def wrapped(self, *args, **kwargs):
+            return fn(self, *args, **kwargs)
+
+        if (kwargs.get("closure", None) is not None) or (len(args) == 1):
+            return wrapped(self, *args, **kwargs)
+        else:
+            return fn(self, *args, **kwargs)
+
+    return inner
+
 def _get_value(x):
     # item is significantly faster than a cpu tensor in eager mode
     if not torch.jit.is_scripting() and is_compiling():

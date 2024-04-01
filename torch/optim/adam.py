@@ -5,7 +5,7 @@ from torch import Tensor
 from .optimizer import (Optimizer, ParamsT, _use_grad_for_differentiable, _get_value,
                         _stack_if_compiling, _dispatch_sqrt, _default_to_fused_or_foreach,
                         _get_scalar_dtype, _capturable_doc, _differentiable_doc, _foreach_doc,
-                        _fused_doc, _maximize_doc, _view_as_real)
+                        _fused_doc, _maximize_doc, _view_as_real, _disable_dynamo_if_closure)
 from torch.utils._foreach_utils import _get_fused_kernels_supported_devices
 
 __all__ = ['Adam', 'adam']
@@ -62,6 +62,7 @@ class Adam(Optimizer):
             if foreach:
                 raise RuntimeError("`fused` and `foreach` cannot be `True` together.")
 
+    @torch._disable_dynamo
     def __setstate__(self, state):
         super().__setstate__(state)
         for group in self.param_groups:
@@ -133,6 +134,7 @@ class Adam(Optimizer):
         return has_complex
 
     @_use_grad_for_differentiable
+    @_disable_dynamo_if_closure
     def step(self, closure=None):
         """Perform a single optimization step.
 
