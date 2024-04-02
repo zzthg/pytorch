@@ -1193,6 +1193,50 @@ optim_db: List[OptimizerInfo] = [
                 "TestOptimRenewed",
                 "test_complex_2d",
             ),
+            DecorateInfo(
+                skipIfTorchDynamo(
+                    "Dynamo supports cpu + capturable, but eager does not. In the presence of a closure,"
+                    "eager will be run with cpu + capturable == True"
+                ),
+                test_name="test_save_load_equality_with_weights_only",
+                device_type="cpu",
+            ),
+            DecorateInfo(
+                skipIfTorchDynamo(
+                    "Dynamo supports cpu + capturable, but eager does not. In the presence of a closure,"
+                    "eager will be run with cpu + capturable == True"
+                ),
+                test_name="test_load_nontensor_step",
+                device_type="cpu",
+            ),
+            DecorateInfo(
+                skipIfTorchDynamo(
+                    "Dynamo supports cpu + capturable, but eager does not. In the presence of a closure,"
+                    "eager will be run with cpu + capturable == True"
+                ),
+                test_name="test_forloop_goes_right_direction",
+                device_type="cpu",
+            ),
+            DecorateInfo(
+                skipIfTorchDynamo(
+                    "Dynamo supports cpu + capturable, but eager does not. In the presence of a closure,"
+                    "eager will be run with cpu + capturable == True"
+                ),
+                test_name="test_deepcopy_copies_all_public_attrs",
+                device_type="cpu",
+            ),
+            DecorateInfo(
+                skipIfTorchDynamo(
+                    "Dynamo supports cpu + capturable, but eager does not. In the presence of a closure,"
+                    "eager will be run with cpu + capturable == True"
+                ),
+                test_name="test_state_dict_deterministic",
+                device_type="cpu",
+            ),
+            DecorateInfo(
+                toleranceOverride({torch.float32: tol(2e-7, 7.5e-7)}),
+                test_name="test_fused_matches_forloop",
+            ),
         ),
     ),
     OptimizerInfo(

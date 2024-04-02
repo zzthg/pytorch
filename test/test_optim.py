@@ -73,6 +73,7 @@ class TestOptimRenewed(TestCase):
         optim_cls = optim_info.optim_cls
         optim_inputs = optim_info.optim_inputs_func(device=device)
         for optim_input in optim_inputs:
+            torch._dynamo.reset()
             if "foreach" in optim_info.supported_impls:
                 optim_input.kwargs["foreach"] = False  # force forloop
             if contiguous:
@@ -113,6 +114,7 @@ class TestOptimRenewed(TestCase):
         optim_cls = optim_info.optim_cls
         optim_inputs = optim_info.optim_inputs_func(device=device)
         for optim_input in optim_inputs:
+            torch._dynamo.reset()
             if "foreach" in optim_info.supported_impls:
                 optim_input.kwargs["foreach"] = False  # force forloop
 
@@ -794,12 +796,7 @@ class TestOptimRenewed(TestCase):
 
             # Prime the optimizer
             for _ in range(10):
-                if torch._dynamo.is_compiling():
-                    closure()
-                    optimizer.step()
-                else:
-                    closure()
-                    optimizer.step()
+                optimizer.step(closure)
 
             # Clone the weights and construct a new optimizer for them
             with torch.no_grad():
@@ -814,14 +811,8 @@ class TestOptimRenewed(TestCase):
 
             # Run both optimizers in parallel
             for _ in range(10):
-                if torch._dynamo.is_compiling():
-                    closure()
-                    optimizer.step()
-                    closure_c()
-                    optimizer_c.step()
-                else:
-                    optimizer.step(closure)
-                    optimizer_c.step(closure_c)
+                optimizer.step(closure)
+                optimizer_c.step(closure_c)
                 self.assertEqual(weight, weight_c)
                 self.assertEqual(bias, bias_c)
 
