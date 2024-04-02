@@ -93,7 +93,7 @@ def build_triton(
         triton_basedir = Path(tmpdir) / "triton"
         triton_pythondir = triton_basedir / "python"
         if build_rocm:
-            triton_repo = "https://github.com/ROCmSoftwarePlatform/triton"
+            triton_repo = "https://github.com/jataylo/triton"
             triton_pkg_name = "pytorch-triton-rocm"
         else:
             triton_repo = "https://github.com/openai/triton"

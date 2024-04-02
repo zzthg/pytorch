@@ -13,7 +13,7 @@ conda_reinstall() {
 }
 
 if [ -n "${ROCM_VERSION}" ]; then
-  TRITON_REPO="https://github.com/ROCmSoftwarePlatform/triton"
+  TRITON_REPO="https://github.com/jataylo/triton"
   TRITON_TEXT_FILE="triton-rocm"
 else
   TRITON_REPO="https://github.com/openai/triton"
