@@ -299,6 +299,7 @@ class TestOptimRenewed(TestCase):
             self.assertTrue(losses.all_popped())
 
 
+    @torch._disable_dynamo(recursive=False)
     def _test_derived_optimizers(self, device, dtype, optim_info, flag, reduced_precision=False, assert_step_dtype=None):
         """
         Given a flag 'fused' or 'foreach', test for parity of optimizer state
@@ -464,6 +465,7 @@ class TestOptimRenewed(TestCase):
 
     @onlyCUDA
     @optims([optim for optim in optim_db if "foreach" in optim.supported_impls], dtypes=[torch.float64])
+    @torch._disable_dynamo(recursive=False)
     def test_set_default_dtype_works_with_foreach(self, device, dtype, optim_info):
         # https://github.com/pytorch/pytorch/issues/110940
         # We coerce step to always be float32 unless the
@@ -706,7 +708,11 @@ class TestOptimRenewed(TestCase):
 
         for optim_input in all_optim_inputs:
             optimizer = optim_cls(params, **optim_input.kwargs)
-            optimizer.step(closure)
+            if torch._dynamo.is_compiling():
+                closure()
+                optimizer.step()
+            else:
+                optimizer.step(closure)
 
 
     @optims(optim_db, dtypes=[torch.float32])
@@ -746,7 +752,11 @@ class TestOptimRenewed(TestCase):
                 params[0].grad = torch.sparse_coo_tensor(i, v, (5, 1), device=device, dtype=dtype)
             else:
                 params[0].grad = torch.zeros_like(params[0])
-            optimizer.step(closure)
+            if torch._dynamo.is_compiling():
+                closure()
+                optimizer.step()
+            else:
+                optimizer.step(closure)
             self.assertEqual(old_param, params[0])
 
 
@@ -761,6 +771,7 @@ class TestOptimRenewed(TestCase):
 
 
     @optims(optim_db, dtypes=[torch.float32])
+    @torch._disable_dynamo(recursive=False)
     def test_state_dict_deterministic(self, device, dtype, optim_info):
         optim_cls = optim_info.optim_cls
 
@@ -783,7 +794,12 @@ class TestOptimRenewed(TestCase):
 
             # Prime the optimizer
             for _ in range(10):
-                optimizer.step(closure)
+                if torch._dynamo.is_compiling():
+                    closure()
+                    optimizer.step()
+                else:
+                    closure()
+                    optimizer.step()
 
             # Clone the weights and construct a new optimizer for them
             with torch.no_grad():
@@ -798,8 +814,14 @@ class TestOptimRenewed(TestCase):
 
             # Run both optimizers in parallel
             for _ in range(10):
-                optimizer.step(closure)
-                optimizer_c.step(closure_c)
+                if torch._dynamo.is_compiling():
+                    closure()
+                    optimizer.step()
+                    closure_c()
+                    optimizer_c.step()
+                else:
+                    optimizer.step(closure)
+                    optimizer_c.step(closure_c)
                 self.assertEqual(weight, weight_c)
                 self.assertEqual(bias, bias_c)
 
@@ -904,6 +926,7 @@ class TestOptimRenewed(TestCase):
 
 
     @optims(optim_db, dtypes=[torch.float32])
+    @torch._disable_dynamo(recursive=False)
     def test_load_nontensor_step(self, device, dtype, optim_info):
         optim_cls = optim_info.optim_cls
 
@@ -962,8 +985,13 @@ class TestOptimRenewed(TestCase):
 
             optimizer = optim_cls(params, **optim_input.kwargs)
 
+
             for _ in range(3):
-                optimizer.step(closure)
+                if torch._dynamo.is_compiling():
+                    closure()
+                    optimizer.step()
+                else:
+                    optimizer.step(closure)
 
             with torch.no_grad():
                 params_cuda = [p.to(device="cuda") for p in params]
@@ -986,8 +1014,14 @@ class TestOptimRenewed(TestCase):
                     self.assertEqual(state_cuda["step"].device.type, "cuda" if capturable else "cpu")
 
             for _ in range(5):
-                optimizer.step(closure)
-                optimizer_cuda.step(closure)
+                if torch._dynamo.is_compiling():
+                    closure()
+                    optimizer.step()
+                    closure()
+                    optimizer_cuda.step()
+                else:
+                    optimizer.step(closure)
+                    optimizer_cuda.step(closure)
                 self.assertEqual(params, params_cuda)
                 self.assertEqual(optimizer.state_dict(), optimizer_cuda.state_dict())
 
@@ -1238,6 +1272,7 @@ class TestOptimRenewed(TestCase):
 
 
     @optims(optim_db, dtypes=[torch.float32])
+    @torch._disable_dynamo(recursive=False)
     def test_deepcopy_copies_all_public_attrs(self, device, dtype, optim_info):
         optim_cls = optim_info.optim_cls
 

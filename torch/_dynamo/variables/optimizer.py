@@ -61,20 +61,26 @@ class OptimizerVariable(UserDefinedObjectVariable):
         tensor_to_source=None,
         **kwargs,
     ):
-        from ..decorators import mark_static_address
-
         super().__init__(value, **kwargs)
-
-        for group in self.value.param_groups:
-            if "capturable" in group:
-                group["capturable"] = True
-
-            for p in group["params"]:
-                mark_static_address(p, guard=False)
-
+        self.capturable_set = False
         self.grad_to_source = grad_to_source or {}
         self.tensor_to_source = tensor_to_source or {}
         self.static_tensor_names = static_tensor_names or set()
+
+        # Set capturable to True as late as possible
+        self._set_capturable()
+
+    def _set_capturable(self):
+        if not self.capturable_set:
+            from ..decorators import mark_static_address
+
+            for group in self.value.param_groups:
+                if "capturable" in group:
+                    group["capturable"] = True
+
+                for p in group["params"]:
+                    mark_static_address(p, guard=False)
+            self.capturable_set = True
 
     def call_method(
         self,
@@ -84,6 +90,7 @@ class OptimizerVariable(UserDefinedObjectVariable):
         kwargs: "Dict[str, VariableTracker]",
     ) -> "VariableTracker":
         """This is an optimization to avoid tracing the very slow initialization of the optimizer"""
+
         if name == "_init_group":
             try:
                 py_args, py_kwargs = self.get_python_args(*args, **kwargs)
