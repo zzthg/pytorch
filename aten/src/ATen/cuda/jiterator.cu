@@ -43,7 +43,8 @@ static inline void launch_jitted_vectorized_kernel_dynamic(
   ss << static_cast<int>(at::cuda::jit::BinaryFuncVariant::NoScalar);
   ss << extra_args_types;
   ss << vec_size;
-  ss << dev_idx;
+// DeviceIndex, e.g. int8_t, is not treated as a number by the stream, cast to int as a workaround
+  ss << static_cast<int>(dev_idx);
   const std::string cache_key = ss.str();
 
   static std::mutex _jiterator_mutex;
@@ -338,7 +339,7 @@ c10::SmallVector<at::Tensor> CompileAndLaunchKernel(
     config.add_owned_output(outs[i]);
   }
   for (const auto& t: tensors) {
-    config.add_input(t);
+    config.add_const_input(t);
   }
   TensorIterator iter = config.build();
 
