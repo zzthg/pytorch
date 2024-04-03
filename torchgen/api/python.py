@@ -1170,6 +1170,7 @@ SUPPORTED_RETURN_TYPES = {
     "at::IntArrayRef",
     "at::ScalarType",
     "at::Stream",
+    "c10::SymInt",
 }
 
 
