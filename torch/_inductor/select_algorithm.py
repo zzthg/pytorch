@@ -839,6 +839,8 @@ class AlgorithmSelectorCache(PersistentCache):
     ):
         from .codegen.cuda.cuda_kernel import CUDATemplateCaller
 
+        # TODO - assert that we have not mutating kernels here
+
         # TODO(nmacchioni): remove once CI tests are fixed
         choices = [choice for choice in choices if choice is not None]
 
@@ -1169,7 +1171,7 @@ class AlgorithmSelectorCache(PersistentCache):
         )
 
     @staticmethod
-    def benchmark_example_value(node):
+    def benchmark_example_value(node, written_to=True):
         """
         Convert an ir.Buffer into a concrete torch.Tensor we can use for
         benchmarking.
@@ -1181,16 +1183,27 @@ class AlgorithmSelectorCache(PersistentCache):
             node = node.unwrap_view()
         # preserve rng states to avoid the rand_strided call below changes
         # the rng states for the real model code.
+        size = V.graph.sizevars.size_hints(
+            node.get_size(),
+            fallback=config.unbacked_symint_fallback,
+        )
+        stride = V.graph.sizevars.size_hints(
+            node.get_stride(),
+            fallback=config.unbacked_symint_fallback,
+        )
+        device = node.get_device()
+        dtype = node.get_dtype()
+        extra_size = node.layout.offset
+
+        if not written_to:
+            return torch._inductor.utils.get_read_only_benchmark_value(
+                size, stride, dtype=dtype, device=device, extra_size=extra_size
+            )
+
         with preserve_rng_state():
             return rand_strided(
-                V.graph.sizevars.size_hints(
-                    node.get_size(),
-                    fallback=config.unbacked_symint_fallback,
-                ),
-                V.graph.sizevars.size_hints(
-                    node.get_stride(),
-                    fallback=config.unbacked_symint_fallback,
-                ),
+                size,
+                stride,
                 device=node.get_device(),
                 dtype=node.get_dtype(),
                 extra_size=node.layout.offset,
