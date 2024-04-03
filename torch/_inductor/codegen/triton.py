@@ -36,7 +36,7 @@ from torch._dynamo.utils import preserve_rng_state
 from torch._inductor.metrics import is_metric_table_enabled, log_kernel_metadata
 from torch._prims_common import is_integer_dtype
 from torch.utils._sympy.functions import FloorDiv, ModularIndexing
-from torch.utils._sympy.value_ranges import ValueRanges
+from torch.utils._sympy.value_ranges import bound_sympy, ValueRanges
 from torch.utils._triton import has_triton_package
 
 from ..._dynamo.utils import counters
@@ -609,7 +609,7 @@ class TritonOverrides(OpOverrides):
         elif bug == "accuracy":
             return f"{x} + 1"
         elif bug is None:
-            return ops.maximum("0", x)
+            return ops.maximum(ops.constant(0, torch.int32), x)
         else:
             raise AssertionError(
                 f"unrecognized config triton.inject_relu_bug_TESTING_ONLY = {bug!r}"
@@ -850,11 +850,9 @@ class TritonOverrides(OpOverrides):
 
     @staticmethod
     def sign(x):
-        def to_int(s):
-            return f"{s}.to(tl.int8)"
-
-        left = to_int(ops.lt("0", x))
-        right = to_int(ops.lt(x, "0"))
+        z = ops.constant(0, torch.int32)
+        left = ops.to_dtype((ops.lt(z, x)), torch.int8)
+        right = ops.to_dtype((ops.lt(x, z)), torch.int8)
         sub = ops.sub(left, right)
         return f"{sub}.to({x}.dtype)"
 
@@ -900,10 +898,15 @@ class TritonKernelOverrides(TritonOverrides):
 
     @classmethod
     def index_expr(cls, expr, dtype):
+        bounds = ValueRanges.unknown()
+        # If this expression does not come from an FX node, we compute its bounds
+        if (
+            fx_node := getattr(V.interpreter, "current_node", None)
+        ) and fx_node.target != "index_expr":
+            bounds = bound_sympy(expr)
         indexing = V.kernel.indexing(expr, block_ptr=False)
         assert isinstance(indexing, IndexingOptions)
-        # This is called from CSEProxy.__getattr__,  so we'll set the bounds there
-        var = V.kernel.cse.generate(V.kernel.compute, indexing.index_str)
+        var = V.kernel.cse.generate(V.kernel.compute, indexing.index_str, bounds=bounds)
 
         if dtype not in {torch.int32, torch.int64}:
             var = V.kernel.cse.generate(V.kernel.compute, cls.to_dtype(var, dtype))
@@ -915,10 +918,14 @@ class TritonKernelOverrides(TritonOverrides):
         with V.kernel.mask_loads(mask) as new_mask:
             result = body()
 
+        # Remove once CSEVariables track the dtype
+        if result.bounds.is_bool:
+            other = bool(other)
         # Take dtype from result to prevent accidental promotion
         other = V.kernel.cse.generate(
             V.kernel.compute,
             f"tl.full({result}.shape, {triton_constant(other)}, {result}.dtype)",
+            bounds=ValueRanges.wrap(other),
         )
         return ops.where(new_mask, result, other)
 
