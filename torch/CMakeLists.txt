@@ -356,6 +356,12 @@ if(USE_UCC)
   target_compile_definitions(torch_python PRIVATE USE_UCC)
 endif()
 
+if(USE_OPENTELEMTRY)
+  find_package(opentelemetry-cpp CONFIG REQUIRED)
+  target_include_directories(torch_python PRIVATE ${OPENTELEMETRY_CPP_INCLUDE_DIRS})
+  target_link_libraries(torch_python PRIVATE ${OPENTELEMETRY_CPP_LIBRARIES})
+endif()
+
 if(BUILD_ONEDNN_GRAPH)
   target_compile_definitions(torch_python PRIVATE "-DBUILD_ONEDNN_GRAPH")
   target_compile_definitions(torch_cpu PRIVATE "-DBUILD_ONEDNN_GRAPH")
