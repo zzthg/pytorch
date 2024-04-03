@@ -290,6 +290,7 @@ class OpDispatcher:
                 args_schema.append(arg._spec)
                 local_args.append(arg._local_tensor)
                 if mesh is not None:
+                    print(f"{mesh=}, {arg.device_mesh=}")
                     if mesh != arg.device_mesh:
                         raise NotImplementedError(
                             f"{op_call}: DTensor does not support cross-mesh operation yet!"
