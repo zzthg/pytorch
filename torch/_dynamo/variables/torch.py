@@ -672,6 +672,10 @@ class TorchInGraphFunctionVariable(BaseTorchVariable):
     ) -> "VariableTracker":
         from . import ConstantVariable, SymNodeVariable, TensorVariable
         from .builder import wrap_fx_proxy
+        from .inline_helper import (
+            decompose_and_inline_function_with_makefx,
+            should_decompose_torch_op,
+        )
 
         if self.can_constant_fold_through() and check_unspec_or_constant_args(
             args, kwargs
@@ -724,14 +728,20 @@ For now, dynamo will explicitly graph break when it encounters user code with th
                 ):
                     fn_ = getattr(torch, torch_sym_op)
 
-            tensor_variable = wrap_fx_proxy(
-                tx=tx,
-                proxy=tx.output.create_proxy(
-                    "call_function",
-                    fn_,
-                    *proxy_args_kwargs(args, kwargs),
-                ),
-            )
+            tensor_variable = None
+            if should_decompose_torch_op(fn_):
+                tensor_variable = decompose_and_inline_function_with_makefx(
+                    tx, fn_, args, kwargs
+                )
+            if tensor_variable is None:
+                tensor_variable = wrap_fx_proxy(
+                    tx=tx,
+                    proxy=tx.output.create_proxy(
+                        "call_function",
+                        fn_,
+                        *proxy_args_kwargs(args, kwargs),
+                    ),
+                )
 
             if (
                 isinstance(tensor_variable, TensorVariable)

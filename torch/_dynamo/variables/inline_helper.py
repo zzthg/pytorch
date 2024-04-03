@@ -17,6 +17,28 @@ def dummy_accumulate_grad_(t1, t2):
         t1.grad += t2
 
 
+def should_decompose_torch_op(fn):
+    from torch._dynamo import compiled_autograd
+
+    # TODO(JackCaoG): we need a better way to tell if a torch function should we decompose
+    allowed_torch_fn = fn.__name__ not in ["_make_grads"]
+    definanilly_not_composite_kernel = type(
+        fn
+    ) == torch._ops.OpOverload and not torch._C._dispatch_has_kernel_for_dispatch_key(
+        fn.name(), torch._C.DispatchKey.CompositeImplicitAutograd
+    )
+
+    # only decompoization torch ops for forward
+    in_compiled_backward = compiled_autograd.compiled_autograd_enabled
+    print(fn)
+    return (
+        torch._dynamo.config.use_single_step_graph
+        and allowed_torch_fn
+        and not definanilly_not_composite_kernel
+        and not in_compiled_backward
+    )
+
+
 def vt_to_fake_helper(vt, tx):
     from ..utils import get_fake_value
 
@@ -98,6 +120,18 @@ def decompose_and_inline_function_with_makefx(tx, fn, args, kwargs):
     from .dicts import ConstDictVariable
     from .lists import BaseListVariable
 
+    if not hasattr(decompose_and_inline_function_with_makefx, "fn_stack"):
+        decompose_and_inline_function_with_makefx.fn_stack = []
+
+    if type(fn) == torch._ops.OpOverload:
+        if (
+            len(decompose_and_inline_function_with_makefx.fn_stack) > 0
+            and decompose_and_inline_function_with_makefx.fn_stack[-1] == fn
+        ):
+            breakpoint()
+            return None
+        decompose_and_inline_function_with_makefx.fn_stack.append(fn)
+
     # convert he arguments from VariableTracker to fake tensors + constants again
     fake_value_args = []
     for arg in args:
@@ -140,7 +174,7 @@ def decompose_and_inline_function_with_makefx(tx, fn, args, kwargs):
         fx_g = code_to_Fx[code]
     else:
         code_to_Fx[code] = fx_g
-    # print(fx_g.code)
+    print(fx_g.code)
 
     # now inline this fx graph and return the output
     user_fn_variable_with_kwargs = SourcelessBuilder.create(
@@ -169,4 +203,6 @@ def decompose_and_inline_function_with_makefx(tx, fn, args, kwargs):
         (gm_variable, input_args_variable, input_kwargs_variable),
         {},
     )
+    if type(fn) == torch._ops.OpOverload:
+        decompose_and_inline_function_with_makefx.fn_stack.pop()
     return res
