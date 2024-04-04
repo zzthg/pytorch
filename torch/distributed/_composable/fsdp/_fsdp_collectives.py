@@ -3,6 +3,8 @@ from typing import List, NamedTuple, Optional, Tuple, Union
 import torch
 import torch.distributed as dist
 from torch.distributed.distributed_c10d import ReduceOp
+from torch.distributed.utils import cuda_stream_if_not_compiling
+from torch.distributed._functional_collectives import is_torchdynamo_compiling as is_compiling
 from ._fsdp_common import (
     _get_dim0_padded_size,
     _raise_assert_with_print,
@@ -29,7 +31,7 @@ def foreach_all_gather(
 ) -> Optional[AllGatherResult]:
     world_size, rank = group.size(), group.rank()
     # - Copy in
-    with torch.cuda.stream(all_gather_copy_in_stream):
+    with cuda_stream_if_not_compiling(all_gather_copy_in_stream):
         param_all_gather_inputs = [
             fsdp_param.all_gather_input for fsdp_param in fsdp_params
         ]
@@ -49,8 +51,9 @@ def foreach_all_gather(
         foreach_copy_dsts = torch.split(all_gather_input, inp_split_sizes)
         torch._foreach_copy_(foreach_copy_dsts, param_all_gather_inputs)
         del param_all_gather_inputs
-    all_gather_stream.wait_stream(all_gather_copy_in_stream)
-    with torch.cuda.stream(all_gather_stream):
+    if not is_compiling():
+        all_gather_stream.wait_stream(all_gather_copy_in_stream)
+    with cuda_stream_if_not_compiling(all_gather_stream):
         # - All-gather
         all_gather_work = dist.all_gather_into_tensor(
             output_tensor=all_gather_output,
@@ -76,10 +79,11 @@ def foreach_all_gather_copy_out(
         all_gather_work,
         all_gather_input_numels,
     ) = all_gather_result
-    if all_gather_event is not None:  # sync op
-        torch.cuda.current_stream().wait_event(all_gather_event)
-    if all_gather_work is not None:  # async op
-        all_gather_work.wait()
+    if not is_compiling():
+        if all_gather_event is not None:  # sync op
+            torch.cuda.current_stream().wait_event(all_gather_event)
+        if all_gather_work is not None:  # async op
+            all_gather_work.wait()
     world_size = group.size()
     dtype, device = all_gather_output.dtype, all_gather_output.device
     for all_gather_input_numel, fsdp_param in zip(all_gather_input_numels, fsdp_params):
@@ -129,18 +133,20 @@ def foreach_reduce(
     )
     reduce_scatter_input_numel = sum(s.numel() for s in padded_unsharded_sizes)
     reduce_scatter_output_numel = reduce_scatter_input_numel // world_size
-    current_stream = torch.cuda.current_stream()
-    reduce_scatter_stream.wait_stream(current_stream)
-    with torch.cuda.stream(reduce_scatter_stream):
+    if not is_compiling():
+        current_stream = torch.cuda.current_stream()
+        reduce_scatter_stream.wait_stream(current_stream)
+    with cuda_stream_if_not_compiling(reduce_scatter_stream):
         reduce_scatter_input = torch.empty(
             (reduce_scatter_input_numel,), dtype=reduce_dtype, device=device
         )
         foreach_reduce_scatter_copy_in(
             unsharded_grads, reduce_scatter_input, world_size
         )
-        # Only after the copy-in finishes can we free the gradients, which were
-        # computed in the default stream
-        current_stream.wait_stream(reduce_scatter_stream)
+        if not is_compiling():
+            # Only after the copy-in finishes can we free the gradients, which were
+            # computed in the default stream
+            current_stream.wait_stream(reduce_scatter_stream)
         unsharded_grads.clear()
         post_reduce_output = reduce_scatter_input.new_empty(
             (reduce_scatter_output_numel,)
@@ -180,7 +186,7 @@ def foreach_reduce(
                 fsdp_param.sharded_param.grad = new_sharded_dtensor_grad
             padded_sharded_numel = padded_unsharded_size.numel() // world_size
             flat_grad_offset += padded_sharded_numel
-        post_reduce_view_out_event = view_out_stream.record_event()
+        post_reduce_view_out_event = view_out_stream.record_event() if not is_compiling() else None
     # The RS output is allocated in the RS stream and used in the default
     # stream (for optimizer). To ensure its memory is not reused for later
     # RSs, we do not need extra synchronization since the sharded parameters

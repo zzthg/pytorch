@@ -8,6 +8,7 @@ import torch.nn as nn
 
 from torch.autograd.graph import Node
 from torch.distributed.fsdp._common_utils import _named_parameters_with_duplicates
+from torch.distributed._functional_collectives import is_torchdynamo_compiling as is_compiling
 from torch.utils._pytree import tree_flatten, tree_unflatten
 from torch.utils.hooks import RemovableHandle
 from ._fsdp_api import MixedPrecisionPolicy
@@ -67,7 +68,7 @@ class FSDPCommContext:
         if training_state in (TrainingState.FORWARD, TrainingState.PRE_BACKWARD):
             # Use separate streams for implicit prefetching
             return self.all_gather_copy_in_stream, self.all_gather_stream
-        current_stream = torch.cuda.current_stream()
+        current_stream = torch.cuda.current_stream() if is_compiling() else None
         return current_stream, current_stream
 
 
@@ -245,8 +246,11 @@ class FSDPParamGroup:
         for fsdp_param in self.fsdp_params:
             fsdp_param.init_unsharded_param()  # no-op after 1st call
         self._to_unsharded()
-        all_gather_copy_out_event = torch.cuda.Event()
-        all_gather_copy_out_event.record()
+        if not is_compiling():
+            all_gather_copy_out_event = torch.cuda.Event()
+            all_gather_copy_out_event.record()
+        else:
+            all_gather_copy_out_event = None
         if self._training_state == TrainingState.FORWARD:
             self.comm_ctx.all_gather_state = AllGatherState(
                 self._all_gather_result, all_gather_copy_out_event
@@ -256,8 +260,9 @@ class FSDPParamGroup:
         self._all_gather_result = None  # free unless saved in `all_gather_state`
 
     def _wait_all_gather_streams_on_event(self, event: torch.cuda.Event):
-        self.comm_ctx.all_gather_copy_in_stream.wait_event(event)
-        self.comm_ctx.all_gather_stream.wait_event(event)
+        if not is_compiling():
+            self.comm_ctx.all_gather_copy_in_stream.wait_event(event)
+            self.comm_ctx.all_gather_stream.wait_event(event)
 
     def reshard(self):
         if self._training_state == TrainingState.FORWARD:
@@ -339,7 +344,8 @@ class FSDPParamGroup:
 
     def finalize_backward(self):
         if self._post_reduce_view_out_event is not None:
-            torch.cuda.current_stream().wait_event(self._post_reduce_view_out_event)
+            if not is_compiling():
+                torch.cuda.current_stream().wait_event(self._post_reduce_view_out_event)
             self._post_reduce_view_out_event = None
         self._training_state = TrainingState.IDLE
         self._post_forward_indices.clear()

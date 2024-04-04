@@ -337,3 +337,10 @@ def _replace_by_prefix(
 
 def _data_ptr_allocated(tensor: torch.Tensor) -> bool:
     return tensor.untyped_storage().data_ptr() > 0
+
+
+def cuda_stream_if_not_compiling(stream):
+    ctx = contextlib.nullcontext()
+    if not torch.distributed._functional_collectives.is_torchdynamo_compiling():
+        ctx = torch.cuda.stream(stream)
+    return ctx
