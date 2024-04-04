@@ -38,7 +38,7 @@ target_compile_options(c10_hip PRIVATE ${HIP_CXX_FLAGS})
 target_compile_options(c10_hip PRIVATE "-DC10_HIP_BUILD_MAIN_LIB")
 
 # HIP virtual memory managment API is currently implemented on linux only
-if (NOT WIN32)
+if(NOT WIN32)
 target_compile_options(c10_hip PRIVATE "-DPYTORCH_C10_DRIVER_API_SUPPORTED")
 endif()
 
