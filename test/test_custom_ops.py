@@ -666,7 +666,7 @@ class TestCustomOp(CustomOpTestCaseBase):
         )
 
         self.assertExpectedInline(
-            infer_schema(g, mutated_args={"x", "w", "z"}),
+            infer_schema(g, mutates_args={"x", "w", "z"}),
             """(Tensor(a0!) x, Tensor[] y, Tensor(a2!)[] z, Tensor(a3!)?[] w) -> ()""",
         )
 
@@ -718,7 +718,7 @@ class TestCustomOp(CustomOpTestCaseBase):
             def foo(x: Tensor, y: int) -> Tensor:
                 raise NotImplementedError()
 
-            infer_schema(foo, mutated_args={"y"})
+            infer_schema(foo, mutates_args={"y"})
 
     def _generate_examples(self, typ):
         if typ is int:
@@ -2133,7 +2133,7 @@ class MiniOpTest(CustomOpTestCaseBase):
 class TestCustomOpAPI(TestCase):
     @skipIfTorchDynamo("Expected to fail due to no FakeTensor support; not a bug")
     def test_basic(self):
-        @torch.library.custom_op("_torch_testing::add", mutated_args=())
+        @torch.library.custom_op("_torch_testing::add", mutates_args=())
         def add(x: Tensor, y: float) -> Tensor:
             x_np = x.numpy(force=True)
             out_np = x_np + y
@@ -2160,12 +2160,12 @@ class TestCustomOpAPI(TestCase):
 
     def test_mutated_error(self):
         with self.assertRaisesRegex(
-            ValueError, r".*{'y'} in mutated_args were not found"
+            ValueError, r".*{'y'} in mutates_args were not found"
         ):
 
             @torch.library.custom_op(
                 "_torch_testing::numpy_sin_inplace",
-                mutated_args={"y"},
+                mutates_args={"y"},
                 device_types="cpu",
             )
             def numpy_sin_inplace(x: Tensor) -> None:
@@ -2174,7 +2174,7 @@ class TestCustomOpAPI(TestCase):
 
     def test_mutated(self):
         @torch.library.custom_op(
-            "_torch_testing::numpy_sin_inplace", mutated_args={"x"}, device_types="cpu"
+            "_torch_testing::numpy_sin_inplace", mutates_args={"x"}, device_types="cpu"
         )
         def numpy_sin_inplace(x: Tensor) -> None:
             x_np = x.numpy()
@@ -2187,7 +2187,7 @@ class TestCustomOpAPI(TestCase):
         self.assertEqual(x, expected)
         self.assertGreater(x._version, version)
 
-        @torch.library.custom_op("_torch_testing::f", mutated_args={"y", "z", "w"})
+        @torch.library.custom_op("_torch_testing::f", mutates_args={"y", "z", "w"})
         def f(
             x: Tensor, y: Optional[Tensor], z: List[Tensor], w: List[Optional[Tensor]]
         ) -> None:
@@ -2218,7 +2218,7 @@ class TestCustomOpAPI(TestCase):
         sys.version_info >= (3, 12), "torch.compile is not supported on python 3.12+"
     )
     def test_fake(self):
-        @torch.library.custom_op("_torch_testing::add", mutated_args=())
+        @torch.library.custom_op("_torch_testing::add", mutates_args=())
         def add(x: Tensor, y: float) -> Tensor:
             x_np = x.cpu().numpy()
             out_np = x_np + y
@@ -2280,7 +2280,7 @@ Please use `add.register_fake` to add an fake impl.""",
         called_impl = False
         called_abstract = False
 
-        @torch.library.custom_op("_torch_testing::linear", mutated_args=())
+        @torch.library.custom_op("_torch_testing::linear", mutates_args=())
         def custom_linear(x: Tensor, weight: Tensor, bias: Tensor) -> Tensor:
             nonlocal called_impl
             called_impl = True
@@ -2314,14 +2314,14 @@ Please use `add.register_fake` to add an fake impl.""",
 
     @skipIfTorchDynamo("Expected to fail due to no FakeTensor support; not a bug")
     def test_register_autograd_error_cases(self):
-        @torch.library.custom_op("_torch_testing::f", mutated_args=())
+        @torch.library.custom_op("_torch_testing::f", mutates_args=())
         def f(x: List[Tensor]) -> Tensor:
             return x[0].sin()
 
         with self.assertRaises(NotImplementedError):
             f.register_autograd(lambda: None, lambda: None)
 
-        @torch.library.custom_op("_torch_testing::g", mutated_args=())
+        @torch.library.custom_op("_torch_testing::g", mutates_args=())
         def g(x: Tensor) -> Tensor:
             return x.sin()
 
@@ -2332,7 +2332,7 @@ Please use `add.register_fake` to add an fake impl.""",
 
     @skipIfTorchDynamo("Expected to fail due to no FakeTensor support; not a bug")
     def test_replacement(self):
-        @torch.library.custom_op("_torch_testing::f", mutated_args=())
+        @torch.library.custom_op("_torch_testing::f", mutates_args=())
         def f(x: Tensor) -> Tensor:
             return x.sin()
 
@@ -2340,7 +2340,7 @@ Please use `add.register_fake` to add an fake impl.""",
         y = f(x)
         self.assertEqual(y, x.sin())
 
-        @torch.library.custom_op("_torch_testing::f", mutated_args=())
+        @torch.library.custom_op("_torch_testing::f", mutates_args=())
         def f(x: Tensor) -> Tensor:
             return x.cos()
 
@@ -2354,7 +2354,7 @@ Please use `add.register_fake` to add an fake impl.""",
         cuda_call_count = 0
 
         @torch.library.custom_op(
-            "_torch_testing::f", mutated_args=(), device_types="cpu"
+            "_torch_testing::f", mutates_args=(), device_types="cpu"
         )
         def f(x: Tensor) -> Tensor:
             nonlocal cpu_call_count
@@ -2387,7 +2387,7 @@ Please use `add.register_fake` to add an fake impl.""",
     @unittest.skipIf(not TEST_CUDA, "requires CUDA")
     def test_multi_types(self):
         @torch.library.custom_op(
-            "_torch_testing::f", mutated_args=(), device_types=("cpu", "cuda")
+            "_torch_testing::f", mutates_args=(), device_types=("cpu", "cuda")
         )
         def f(x: Tensor) -> Tensor:
             x_np = x.cpu().numpy()
@@ -2402,7 +2402,7 @@ Please use `add.register_fake` to add an fake impl.""",
         self.assertEqual(y, x.sin())
 
     def test_disallows_output_aliasing(self):
-        @torch.library.custom_op("_torch_testing::f", mutated_args=())
+        @torch.library.custom_op("_torch_testing::f", mutates_args=())
         def f(x: Tensor) -> Tensor:
             return x.view(-1)
 
@@ -2410,7 +2410,7 @@ Please use `add.register_fake` to add an fake impl.""",
         with self.assertRaisesRegex(RuntimeError, "may not alias"):
             f(x)
 
-        @torch.library.custom_op("_torch_testing::f", mutated_args=())
+        @torch.library.custom_op("_torch_testing::f", mutates_args=())
         def f(x: Tensor) -> Tensor:
             return x
 
@@ -2419,7 +2419,7 @@ Please use `add.register_fake` to add an fake impl.""",
             f(x)
 
         @torch.library.custom_op(
-            "_torch_testing::f", mutated_args={"x"}, device_types="cpu"
+            "_torch_testing::f", mutates_args={"x"}, device_types="cpu"
         )
         def numpy_sin_inplace(x: Tensor) -> Tensor:
             x_np = x.numpy()
