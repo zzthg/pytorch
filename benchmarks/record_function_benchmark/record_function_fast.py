@@ -34,6 +34,12 @@ def test_record_function_args_no_shape():
              with torch._C._profiler._RecordFunctionFast("add_test_fast_rf1", [x]):
                  x.view_as(x)
 record_time(test_record_function_args_no_shape, "Args no shape")
+def test_record_function_rec_shape():
+        with tprofile(record_shapes=True) as p:
+             with torch._C._profiler._RecordFunctionFast("add_test_fast_rf1", (x,)):
+                 x.view_as(x)
+record_time(test_record_function_rec_shape, "With shape tuple")
+
 
 @profile
 def test_rec_function_profile_no_args():
