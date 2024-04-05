@@ -132,6 +132,7 @@ class ValueRanges(Generic[_T]):
     def __init__(self, lower: AllIn, upper: AllIn) -> None:
         lower = simple_sympify(lower)
         upper = simple_sympify(upper)
+
         # TODO: when the bounds have free variables, this may be
         # nontrivial to actually verify
         try:
@@ -153,9 +154,8 @@ class ValueRanges(Generic[_T]):
         else:
             raise AssertionError(f"not bool like {self}")
 
-    def __contains__(self, x: AllIn) -> bool:
-        x = simple_sympify(x)
-        return sympy_generic_le(self.lower, x) and sympy_generic_le(x, self.upper)
+    def __contains__(self, x):
+        return ValueRanges.wrap(x).issubset(self)
 
     def issubset(self, other):
         return sympy_generic_le(other.lower, self.lower) and sympy_generic_le(

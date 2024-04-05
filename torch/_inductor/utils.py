@@ -586,6 +586,10 @@ def sympy_str(expr: sympy.Expr) -> str:
     return str(expr)
 
 
+def generate_assert(check):
+    return (check or config.debug_index_asserts) and config.assert_indirect_indexing
+
+
 def sympy_index_symbol(name: str) -> sympy.Symbol:
     """
     Used to generate an integer-nonnegative symbol.

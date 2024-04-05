@@ -30,6 +30,10 @@ from typing_extensions import TypeAlias
 import torch
 from torch._prims_common import dtype_to_type, is_integer_dtype
 from torch.utils._sympy.functions import FloorDiv, ModularIndexing, Where
+from torch.utils._sympy.value_ranges import bound_sympy, ValueRanges
+from .utils import generate_assert
+
+from .virtualized import V
 
 
 _ExprType = Union[sympy.Expr, float, int, bool]
@@ -127,7 +131,6 @@ class SymPyOps:
         result_type = torch.promote_types(x.dtype, y.dtype)
         if not is_integer_dtype(result_type):
             return NotImplemented
-
         x_expr = sympy.sympify(x.expr)
         y_expr = sympy.sympify(y.expr)
         # In these cases, remainder in Python == remainder in C++, so this transformation
@@ -177,8 +180,22 @@ class IndexPropagation:
 
     """
 
-    def __init__(self, inner: Any):
+    def __init__(self, inner: Any, iter_ranges: Dict[sympy.Symbol, sympy.Expr]):
         self._inner = inner
+        self.shape_env = V.graph.sizevars.shape_env
+
+        def upper_bound(v):
+            return bound_sympy(v).upper if isinstance(v, sympy.Expr) else v
+
+        self.var_to_range = tuple(
+            (k, ValueRanges(0, upper_bound(v) - 1)) for k, v in iter_ranges.items()
+        )
+
+        axioms = []
+        for x, s in iter_ranges.items():
+            axioms.append(0 <= x)
+            axioms.append(x < s)
+        self.axioms = tuple(axioms)
 
     def materialize_expr(self, expr: sympy.Expr, dtype: torch.dtype) -> Any:
         # Construct a new constant/index_expr from the SymPy expression
@@ -267,15 +284,35 @@ class IndexPropagation:
 
         return inner
 
+    def statically_true(self, e):
+        evaluated = self.shape_env._maybe_evaluate_static(
+            e, axioms=self.axioms, var_to_range=self.var_to_range
+        )
+        return bool(evaluated)
+
     def indirect_indexing(
         self, index: Union[Any, IndexPropVar], size: Any, check: bool = True
     ) -> Any:
-        # nb. We do index + Where(...) rather than Where(idx >= 0, idx, idx + sz) because we don't have CSE
-        #     for SymPy expressions, so we don't want to repeat idx too much
-
-        # indirect_indexing returns a sympy value, so no need to wrap in IndexPropVar here
         if isinstance(index, IndexPropVar) and index.is_symbolic:
-            # If we are turning a indirect indexing into direct, we need to wrap it.
-            index = index.value.expr
-            return index + Where(index >= 0, 0, size)
+            expr = sympy.sympify(index.value.expr)
+
+            def wrap_expr(expr):
+                # Positive, negative, mixed
+                if self.statically_true(0 <= expr):
+                    return expr
+                elif self.statically_true(expr < 0):
+                    return expr + size
+                else:
+                    return Where(expr < 0, expr + size, expr)
+
+            # Trivial case
+            if not generate_assert(check):
+                return wrap_expr(expr)
+
+            # It is often 's easier for us to prove that 0 <= expr, than to prove -size <= expr
+            # when dynamic shapes are on
+            if (
+                self.statically_true(0 <= expr) or self.statically_true(-size <= expr)
+            ) and self.statically_true(expr < size):
+                return wrap_expr(expr)
         return self.fallback("indirect_indexing", (index, size, check), {}).value
