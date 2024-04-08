@@ -21,9 +21,9 @@ cp -r "$CONDA_PARENT_DIR/Miniconda3/Lib/site-packages/torch" "$LINUX_TMP_DIR_WIN
 
 pushd .
 if [[ -z "$VC_VERSION" ]]; then
-    "/c/Program Files (x86)/Microsoft Visual Studio/$VC_YEAR/$VC_PRODUCT/VC/Auxiliary/Build/vcvarsall.bat" x64
+    source "/c/Program Files (x86)/Microsoft Visual Studio/$VC_YEAR/$VC_PRODUCT/VC/Auxiliary/Build/vcvarsall.bat" x64
 else
-    "/c/Program Files (x86)/Microsoft Visual Studio/$VC_YEAR/$VC_PRODUCT/VC/Auxiliary/Build/vcvarsall.bat" x64 "-vcvars_ver=$VC_VERSION"
+    source "/c/Program Files (x86)/Microsoft Visual Studio/$VC_YEAR/$VC_PRODUCT/VC/Auxiliary/Build/vcvarsall.bat" x64 "-vcvars_ver=$VC_VERSION"
 fi
 popd
 
@@ -50,3 +50,4 @@ if [[ "${USE_CUDA}" == "1" ]]; then
 fi
 
 export PYTHONPATH="$LINUX_TMP_DIR_WIN/build;$PYTHONPATH"
+env
