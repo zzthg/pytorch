@@ -23,10 +23,11 @@ pushd .
 
 get_envs_from_vcvarsall() {
   pushd "C:/Program Files (x86)/Microsoft Visual Studio/$VC_YEAR/$VC_PRODUCT/VC/Auxiliary/Build"
+  which bash
   if [[ -z "$VC_VERSION" ]]; then
-    cmd /c "vcvarsall.bat x64 && c:/cygwin/bin/bash -c 'env'"
+    cmd /c "vcvarsall.bat x64 && /c/bin/bash -c 'env'"
   else
-    cmd /c "vcvarsall.bat x64 -vcvars_ver=$VC_VERSION && c:/cygwin/bin/bash -c 'env'"
+    cmd /c "vcvarsall.bat x64 -vcvars_ver=$VC_VERSION && /c/bin/bash -c 'env'"
   fi
   popd
 }
