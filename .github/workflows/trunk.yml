@@ -36,7 +36,6 @@ jobs:
     uses: ./.github/workflows/_win-test.yml
     needs:
       - win-vs2019-cpu-py3-build
-      - target-determination
     with:
       build-environment: win-vs2019-cpu-py3
       cuda-version: cpu
