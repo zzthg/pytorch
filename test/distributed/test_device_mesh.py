@@ -202,11 +202,47 @@ class DeviceMeshTestNDim(DTensorTestBase):
         mesh_tensor_2d = torch.arange(8).reshape(4, 2)
         mesh = DeviceMesh(self.device_type, mesh_tensor_2d)
         mesh2 = DeviceMesh(self.device_type, mesh_tensor_2d)
-        self.assertNotEqual(hash(mesh), hash(mesh2))
+        self.assertEqual(hash(mesh), hash(mesh2))
         mesh_tensor_3d = torch.arange(8).reshape(2, 2, 2)
         mesh3 = DeviceMesh(self.device_type, mesh_tensor_3d)
         self.assertNotEqual(hash(mesh), hash(mesh3))
         self.assertNotEqual(hash(mesh2), hash(mesh3))
+
+    @with_comms
+    @run_with_both_funcol_impls
+    def test_device_mesh_parent_child_hash(self):
+        mesh_2d = init_device_mesh(
+            self.device_type, (2, 4), mesh_dim_names=("DP", "TP")
+        )
+        mesh_group_1 = [0, 1, 2, 3]
+        mesh_group_2 = [4, 5, 6, 7]
+        ep_mesh = (
+            DeviceMesh(self.device_type, mesh_group_1)
+            if self.rank < 2
+            else DeviceMesh(self.device_type, mesh_group_2)
+        )
+        # ep_mesh is considered different from mesh_2d["TP"]
+        # since mesh_2d["TP"] has a parent mesh while ep_mesh does not.
+        self.assertEqual(mesh_2d["TP"]._flatten_mesh_list, ep_mesh._flatten_mesh_list)
+        self.assertEqual(mesh_2d["TP"].mesh.shape, ep_mesh.mesh.shape)
+        self.assertEqual(mesh_2d["TP"].device_type, ep_mesh.device_type)
+        self.assertNotEqual(mesh_2d["TP"].mesh_dim_names, ep_mesh.mesh_dim_names)
+        self.assertNotEqual(mesh_2d["TP"]._hash, ep_mesh._hash)
+        self.assertNotEqual(mesh_2d["TP"], ep_mesh)
+
+        # another_mesh is considered the same as ep_mesh
+        # since they have the same mesh and no parent mesh.
+        another_mesh = (
+            DeviceMesh(self.device_type, mesh_group_1)
+            if self.rank < 2
+            else DeviceMesh(self.device_type, mesh_group_2)
+        )
+        self.assertEqual(ep_mesh._flatten_mesh_list, another_mesh._flatten_mesh_list)
+        self.assertEqual(ep_mesh.mesh.shape, another_mesh.mesh.shape)
+        self.assertEqual(ep_mesh.device_type, another_mesh.device_type)
+        self.assertEqual(ep_mesh.mesh_dim_names, another_mesh.mesh_dim_names)
+        self.assertEqual(ep_mesh._hash, another_mesh._hash)
+        self.assertEqual(ep_mesh, another_mesh)
 
 
 class InitDeviceMeshTest(DTensorTestBase):
