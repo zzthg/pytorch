@@ -2668,8 +2668,15 @@ class InliningGeneratorInstructionTranslator(InliningInstructionTranslator):
         tos = self.stack[-1]
         if isinstance(tos, ListIteratorVariable):
             if isinstance(val, ConstantVariable) and val.value is None:
-                self.push(val)
-                self.instruction_pointer = self.indexof[inst.target]
+                try:
+                    val = tos.next_variable(self)
+                except (StopIteration, exc.UserStopIteration) as ex:
+                    if sys.version_info < (3, 12):
+                        self.pop()  # Python 3.12 uses new opcode END_SEND
+                    self.push(ConstantVariable.create(ex.value))
+                    self.instruction_pointer += inst.arg
+                else:
+                    self.push(val)
             else:
                 # invoke send
                 # Unreachable code - if you hit this, you are implementing generator support and have
