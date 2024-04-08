@@ -251,11 +251,6 @@ EXPECTED_SKIPS_OR_FAILS_WITH_DTYPES: Tuple[onnx_test_common.DecorateMeta, ...] =
         reason=onnx_test_common.reason_onnx_script_does_not_support("Arange", "uint8, int8"),
     ),
     xfail(
-        "arange",
-        dtypes=(torch.int16, torch.int32),
-        reason="AssertionError: The values for attribute 'shape' do not match",
-    ),
-    xfail(
         "argmax",
         dtypes=(
             torch.int16,
@@ -1873,7 +1868,7 @@ def _run_test_output_match(
                     == pytorch_test_common.TorchModelType.TORCH_EXPORT_EXPORTEDPROGRAM
                 ):
                     try:
-                        model = torch.export.export(model, inputs)
+                        model = torch.export.export(model, inputs).run_decompositions()
                     except AssertionError as e:
                         # NOTE: avoid fake_mode detection bug in torch.export.export
                         pytest.xfail(
