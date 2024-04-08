@@ -364,8 +364,7 @@ else()
   message(FATAL_ERROR "Could NOT find OpenTelemetry API include directory")
 endif()
 
-list(APPEND CMAKE_MODULE_PATH
-"${CMAKE_CURRENT_SOURCE_DIR}/../third_party/opentelemetry-cpp/api")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/opentelemetry-cpp/api")
 
 target_link_libraries(torch_python PRIVATE opentelemetry_api)
 
