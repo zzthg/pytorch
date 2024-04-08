@@ -20,11 +20,18 @@ source "$INSTALLER_DIR"/activate_miniconda3.sh
 cp -r "$CONDA_PARENT_DIR/Miniconda3/Lib/site-packages/torch" "$LINUX_TMP_DIR_WIN/build/torch/"
 
 pushd .
-if [[ -z "$VC_VERSION" ]]; then
-    source "/c/Program Files (x86)/Microsoft Visual Studio/$VC_YEAR/$VC_PRODUCT/VC/Auxiliary/Build/vcvarsall.bat" x64
-else
-    source "/c/Program Files (x86)/Microsoft Visual Studio/$VC_YEAR/$VC_PRODUCT/VC/Auxiliary/Build/vcvarsall.bat" x64 "-vcvars_ver=$VC_VERSION"
-fi
+
+get_envs_from_vcvarsall() {
+  pushd "C:/Program Files (x86)/Microsoft Visual Studio/$VC_YEAR/$VC_PRODUCT/VC/Auxiliary/Build"
+  if [[ -z "$VC_VERSION" ]]; then
+    cmd /c "vcvarsall.bat x64 && c:/cygwin/bin/bash -c 'env'"
+  else
+    cmd /c "vcvarsall.bat x64 -vcvars_ver=$VC_VERSION && c:/cygwin/bin/bash -c 'env'"
+  fi
+  popd
+}
+get_envs_from_vcvarsall
+
 popd
 
 export DISTUTILS_USE_SDK=1
