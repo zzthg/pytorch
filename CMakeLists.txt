@@ -266,7 +266,6 @@ option(USE_OBSERVERS "Use observers module." OFF)
 option(USE_OPENCL "Use OpenCL" OFF)
 option(USE_OPENCV "Use OpenCV" OFF)
 option(USE_OPENMP "Use OpenMP for parallel code" ON)
-option(USE_OPENTELEMETRY "Use OpenTelemetry" ON)
 option(USE_PRECOMPILED_HEADERS "Use pre-compiled headers to accelerate build." OFF)
 
 option(USE_PROF "Use profiling" OFF)
@@ -1280,6 +1279,12 @@ if(BUILD_BUNDLE_PTXAS AND USE_CUDA)
 endif()
 
 # Opentelemetry Options
-if(USE_OPENTELEMETRY)
-   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/opentelemetry-cpp/api/include)
-endif()
+# TODO: (figure out how to pass the right CXX option
+set(WITH_STL "CXX20")
+set(OPENTELEMETRY_INSTALL ON)
+set(BUILD_TESTING OFF)
+set(WITH_API_ONLY ON)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/opentelemetry-cpp/api/include)
+set(PROJECT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/opentelemetry-cpp")
+add_subdirectory(third_party/opentelemetry-cpp/api)
+add_library(opentelemetry-api::opentelemetry_api STATIC IMPORTED)
