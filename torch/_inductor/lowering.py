@@ -16,6 +16,7 @@ import torch.ao.quantization.fx._decomposed
 import torch.fx
 import torch.utils._pytree as pytree
 from torch._dynamo.create_parameter_op import _bind_nn_parameter
+from torch._higher_order_ops.associative_scan import associative_scan_op
 from torch._higher_order_ops.triton_kernel_wrap import (
     triton_kernel_wrapper_functional,
     triton_kernel_wrapper_mutation,
@@ -5752,6 +5753,30 @@ def templated_attention(*args, **kwargs):
                 "sdpa", choices, [query, key, value], layout
             )
     raise ValueError("TemplatedAttention was passed a subgraph with no output node!")
+
+
+@register_lowering(associative_scan_op, type_promotion_kind=None)
+def associative_scan(combine_fn: ir.Subgraph, input, dim: int):
+    from .subgraph_lowering import InputDescriptor, lower_pointwise_subgraph
+
+    subgraph_inputs = [
+        InputDescriptor(dtype=input.get_dtype(), device=input.get_device())
+        for _ in range(2)
+    ]
+    lowered_combine_fn = lower_pointwise_subgraph(combine_fn, subgraph_inputs)
+
+    def wrapped_combine_fn(lhs, rhs):
+        res = lowered_combine_fn(
+            *pytree.tree_leaves(lhs),
+            *pytree.tree_leaves(rhs),
+        )
+        return (res,)
+
+    kwargs = _make_scan_inner(input, axis=dim, dtype=None)
+    result = ir.Scan.create(**kwargs, combine_fn=wrapped_combine_fn)
+    if result is None:
+        raise RuntimeError("Unable to generate code for associative_scan op")
+    return result[0]
 
 
 @register_lowering(torch.ops.prims._sink_tokens.default)
