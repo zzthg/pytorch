@@ -1170,7 +1170,7 @@ class InstructionTranslatorBase(
         # Python 3.8 only
         addr = self.indexof[self.next_instruction]
         self.push(ConstantVariable.create(addr))
-        self.instruction_pointer = self.indexof[inst.target]
+        self.jump(inst)
 
     def END_FINALLY(self, inst):
         # Python 3.8 only
@@ -2659,7 +2659,12 @@ class InliningGeneratorInstructionTranslator(InliningInstructionTranslator):
             self.push(val)
             # TODO(voz): Unclear if we need the push None in YIELD_VALUE?
             self.YIELD_VALUE(inst)
-            assert self.instruction_pointer is not None and self.instruction_pointer > 0
+
+            # Repeat the YIELD_FROM instruction in the next eval loop
+            assert (
+                isinstance(self.instruction_pointer, int)
+                and self.instruction_pointer > 0
+            )
             self.instruction_pointer -= 1
 
     def SEND(self, inst):
@@ -2674,7 +2679,7 @@ class InliningGeneratorInstructionTranslator(InliningInstructionTranslator):
                     if sys.version_info < (3, 12):
                         self.pop()  # Python 3.12 uses new opcode END_SEND
                     self.push(ConstantVariable.create(ex.value))
-                    self.instruction_pointer += inst.arg
+                    self.jump(inst)
                 else:
                     self.push(val)
             else:
