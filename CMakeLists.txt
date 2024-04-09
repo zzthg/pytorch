@@ -1278,13 +1278,22 @@ if(BUILD_BUNDLE_PTXAS AND USE_CUDA)
    install(PROGRAMS "${PROJECT_BINARY_DIR}/ptxas" DESTINATION "${CMAKE_INSTALL_BINDIR}")
 endif()
 
-# Opentelemetry Options
-# TODO: (figure out how to pass the right CXX option
-set(WITH_STL "CXX20")
-set(OPENTELEMETRY_INSTALL ON)
-set(BUILD_TESTING OFF)
+# Opentelemetry Options: Required for including OpenTelemetry API headers for PyTorch
+# Let's give the same CXX that PyTorch uses to OpenTelemetry
+set(WITH_STL CXX${CMAKE_CXX_STANDARD})
+# We only want to take a dependency on the API headers
 set(WITH_API_ONLY ON)
+# Turn off building tests. OpenTelemetry Tests requires GTest and we don't need these for API
+set(BUILD_TESTING OFF)
+# Use Version 1. From documentation, version 1 is stable, version 2 is preview/experimental
+set(OPENTELEMETRY_ABI_VERSION_NO "1")
+# Install the API package config - this makes opentelemetry_api pkg available to binaries that need it
+set(OPENTELEMETRY_INSTALL "ON")
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/opentelemetry-cpp/api/include)
+# Set PROJECT_SOURCE_DIR so we can properly build opentelemetry-api - it needs
+# this variable set relative to opentelemetry install
 set(PROJECT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/opentelemetry-cpp")
 add_subdirectory(third_party/opentelemetry-cpp/api)
 add_library(opentelemetry-api::opentelemetry_api STATIC IMPORTED)
+# set PROJECT_SOURCE_DIR back to what it was
+set(PROJECT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})

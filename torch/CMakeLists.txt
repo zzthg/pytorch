@@ -356,16 +356,9 @@ if(USE_UCC)
   target_compile_definitions(torch_python PRIVATE USE_UCC)
 endif()
 
+# Allow torch_python to link to OpenTelemetry API headers
 set(OPENTELEMETRY_API_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/opentelemetry-cpp/api/include")
-
-if(OPENTELEMETRY_API_INCLUDE_DIR)
-  message(STATUS "Found OpenTelemetry API include directory: ${OPENTELEMETRY_API_INCLUDE_DIR}")
-else()
-  message(FATAL_ERROR "Could NOT find OpenTelemetry API include directory")
-endif()
-
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/opentelemetry-cpp/api")
-
 target_link_libraries(torch_python PRIVATE opentelemetry_api)
 
 if(BUILD_ONEDNN_GRAPH)
