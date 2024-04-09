@@ -77,7 +77,9 @@ def create_runtime_wrapper(
     def runtime_wrapper(args: List[Any]):
         # Pass in effect tokens (See Note [Side-Effectful Tokens in AOTAutograd])
         if num_tokens > 0:
-            args = (*[torch.empty(0)] * num_tokens, *args)
+            old_args = args
+            args = [*[torch.empty(0)] * num_tokens, *args]
+            old_args.clear()
 
         if trace_joint:
             args_ = list(args)
@@ -90,6 +92,7 @@ def create_runtime_wrapper(
                     compiled_fn,
                     args_,
                     disable_amp=disable_amp,
+                    steal_args=True, # only for flattened
                 )
         else:
             # When we have an inference graph, we run with torch.no_grad.
@@ -102,12 +105,14 @@ def create_runtime_wrapper(
                         compiled_fn,
                         args,
                         disable_amp=disable_amp,
+                        steal_args=True, # only for flattened
                     )
             else:
                 all_outs = call_func_at_runtime_with_args(
                     compiled_fn,
                     args,
                     disable_amp=disable_amp,
+                    steal_args=True, # only for flattened
                 )
 
         num_mutated_runtime_inps = runtime_metadata.num_mutated_inp_runtime_indices
