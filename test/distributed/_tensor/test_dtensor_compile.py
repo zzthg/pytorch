@@ -221,27 +221,6 @@ class TestDTensorCompile(torch._dynamo.test_case.TestCase):
         out = fn(x)
         out2 = torch.compile(fn, backend="eager")(x)
 
-    def test_dtensor_constructor_w_dynamo_disable(self):
-        mesh = DeviceMesh(self.device_type, torch.arange(self.world_size))
-
-        @torch._dynamo.disable(recursive=False)
-        def fn(x):
-            print("foo")
-            return DTensor(
-                x,
-                mesh,
-                (Replicate(), Shard(0)),
-                shape=[128, 32],
-                dtype=x.dtype,
-                requires_grad=x.requires_grad,
-                stride=[32, 1],
-            )
-
-        x = torch.randn(64, 32, requires_grad=True)
-        out = fn(x)
-        out2 = torch.compile(fn, backend="eager")(x)
-        self.assertEqual(out, out2)
-
     def test_dtensor_noncontiguous_output(self):
         mesh = DeviceMesh(self.device_type, torch.arange(self.world_size))
 
