@@ -1893,7 +1893,20 @@ class DictGuardManager : public GuardManager {
       : GuardManager(root, std::move(source)),
         _size(PyDict_Size(example_value.ptr())),
         _expected_type(Py_TYPE(example_value.ptr())),
-        _is_exact_dict_type(PyDict_CheckExact(example_value.ptr())) {}
+        _is_exact_dict_type(PyDict_CheckExact(example_value.ptr())) {
+          // Side A - Print the keys using dict.keys()
+
+          std::cout << "DictGuardManager-sideA: " << get_source() << " keys=" << example_value.attr("keys")() << std::endl << std::flush;
+
+          // Side B - Print the keys ysing PyDict_Next
+          PyObject*  obj = example_value.ptr();
+          PyObject *key = nullptr, *value = nullptr;
+          Py_ssize_t pos = 0;
+          while (PyDict_Next(obj, &pos, &key, &value)) {
+            std::cout << "DictGuardManager-sideB: " << get_source() << " size=" << _size << " key=" << py::repr(key) << std::endl << std::flush;
+          }
+
+        }
 
   GuardManager* get_key_manager(
       py::object key_index,
