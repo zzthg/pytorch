@@ -1667,6 +1667,13 @@ void initJITBindings(PyObject* module) {
       });
 
   m.def(
+      "_check_schema_skip_script_object",
+      [](const FunctionSchema& schema, py::args args, py::kwargs kwargs) {
+        return createPyObjectForStack(
+            std::move(checkSchemaSkipScriptObject(schema, args, kwargs)));
+      });
+
+  m.def(
       "_jit_resolve_packet",
       [](const char* op_name, py::args args, py::kwargs kwargs) {
         try {
@@ -1733,6 +1740,20 @@ void initJITBindings(PyObject* module) {
         }
       },
       py::arg("qualified_name"));
+
+  m.def(
+      "_maybe_call_torch_function_for_op_packet",
+      [](py::handle op_overload_packet, py::args args, py::kwargs kwargs) {
+        py::list ns_method =
+            op_overload_packet.attr("_qualified_op_name").attr("split")("::");
+        return _maybe_handle_torch_function(
+            py::cast<std::string>(ns_method[0]),
+            py::cast<std::string>(ns_method[1]),
+            "",
+            false,
+            args,
+            kwargs);
+      });
 
   m.def(
       "parse_ir",
