@@ -388,7 +388,7 @@ static inline Tensor to_impl(
     c10::optional<c10::MemoryFormat> optional_memory_format) {
 
   // fast path
-  if (to_will_alias(self, dtype, layout, device, copy, optional_memory_format)) {
+  if (to_will_alias(self, dtype, layout, device, copy, optional_memory_format) && self.const_data_ptr()) {
     return self;
   }
   return at::_to_copy(
