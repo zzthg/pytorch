@@ -23,11 +23,14 @@ pushd .
 
 get_envs_from_vcvarsall() {
   if [[ -z "$VC_VERSION" ]]; then
-    echo "call \"C:/Program Files (x86)/Microsoft Visual Studio/$VC_YEAR/$VC_PRODUCT/VC/Auxiliary/Build/vcvarsall.bat\" x64 && env > env.txt"
+    echo "call \"C:/Program Files (x86)/Microsoft Visual Studio/$VC_YEAR/$VC_PRODUCT/VC/Auxiliary/Build/vcvarsall.bat\" x64 && env > env.txt" > temp.bat
   else
-    echo "call \"C:/Program Files (x86)/Microsoft Visual Studio/$VC_YEAR/$VC_PRODUCT/VC/Auxiliary/Build/vcvarsall.bat\" -vcvars_ver=$VC_VERSION && env > env.txt"
+    echo "call \"C:/Program Files (x86)/Microsoft Visual Studio/$VC_YEAR/$VC_PRODUCT/VC/Auxiliary/Build/vcvarsall.bat\" -vcvars_ver=$VC_VERSION && env > env.txt" > temp.bat
   fi
+  chmod +x temp.bat
+  ./.temp.bat
   source env.txt
+  rm temp.bat
   rm env.txt
 }
 get_envs_from_vcvarsall
