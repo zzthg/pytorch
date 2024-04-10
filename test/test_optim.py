@@ -4,6 +4,7 @@ import itertools
 import math
 import tempfile
 from typing import Any, Dict, Tuple
+from itertools import product
 import unittest
 from copy import deepcopy
 from unittest.mock import patch
@@ -21,9 +22,9 @@ from torch.testing._internal.common_cuda import TEST_MULTIGPU
 from torch.testing._internal.common_optimizers import (
     optim_db, optims, OptimizerErrorEnum, _get_optim_inputs_including_global_cliquey_kwargs, TensorTracker)
 from torch.testing._internal.common_device_type import (
-    instantiate_device_type_tests, largeTensorTest, onlyCPU, onlyCUDA, skipMPS, TEST_WITH_ROCM)
-from torch.testing._internal.common_utils import markDynamoStrictTest, parametrize, run_tests, TestCase
-
+    instantiate_device_type_tests, largeTensorTest, onlyCPU, onlyCUDA, skipMPS, TEST_WITH_ROCM, onlyNativeDeviceTypes)
+from torch.testing._internal.common_utils import markDynamoStrictTest, parametrize, run_tests, TestCase, skipIfTorchDynamo
+from torch.testing._internal.common_cuda import _create_scaling_case
 
 FP16_REDUCED_PRECISION = {'atol': 1e-5, 'rtol': 1e-4}
 
@@ -800,16 +801,20 @@ class TestOptimRenewed(TestCase):
             self.assertLessEqual(mt_max_mem, expected_max_mem)
 
 
-    @onlyCUDA
+    @onlyNativeDeviceTypes
     @optims([optim for optim in optim_db if "fused" in optim.supported_impls], dtypes=[torch.float64])
     def test_fused_matches_forloop(self, device, dtype, optim_info):
+        if device not in optim_info.supports_fused_on:
+            self.skipTest(f"Not support fused on {optim_info.optim_cls.__name__}")
         self._test_derived_optimizers(device, dtype, optim_info, "fused")
 
 
-    @onlyCUDA
-    @largeTensorTest("64GB", "cuda")
+    @onlyNativeDeviceTypes
+    @largeTensorTest("64GB")
     @optims([optim for optim in optim_db if "fused" in optim.supported_impls], dtypes=[torch.float16])
     def test_fused_large_tensor(self, device, dtype, optim_info):
+        if device not in optim_info.supports_fused_on:
+            self.skipTest(f"Not support fused on {optim_info.optim_cls.__name__}")
         optim_cls = optim_info.optim_cls
         optim_inputs = optim_info.optim_inputs_func(device=device)
         for optim_input in optim_inputs:
@@ -1246,10 +1251,11 @@ class TestOptimRenewed(TestCase):
 
             # Make sure that device of state['step'] is still CPU _unless_ torch.compile() added a capturable!
             capturable = state_dict_cpu["param_groups"][0].get("capturable", False)
+            fused = state_dict_cpu["param_groups"][0].get("fused", False)
             new_state_dict = optimizer_cuda.state_dict()
             for state_cpu, state_cuda in zip(state_dict_cpu["state"].values(), new_state_dict["state"].values()):
                 if "step" in state_cpu and torch.is_tensor(state_cpu["step"]):
-                    self.assertEqual(state_cuda["step"].device.type, "cuda" if capturable else "cpu")
+                    self.assertEqual(state_cuda["step"].device.type, "cuda" if capturable or fused else "cpu")
 
             for _ in range(5):
                 optimizer.step(closure)
@@ -1557,6 +1563,59 @@ class TestOptimRenewed(TestCase):
             res2 = optim_neg_inf.step(closure)
             self.assertEqual(type(res1), type(res2))
 
+    @onlyCPU
+    @skipIfTorchDynamo("https://github.com/pytorch/pytorch/issues/123238")
+    def test_grad_scaling_autocast_fused_optimizers(self):
+        # This ut is from test_cuda.py test_grad_scaling_autocast_fused_optimizers
+        # but only test Adam/AdamW on CPU
+        # TODO: haozhe, support SGD and unified this ut with the CUDA only one
+        optimizer_ctor = (torch.optim.Adam, torch.optim.AdamW)
+        optimizer_kwargs = ({"fused": True, "amsgrad": False}, {"fused": True, "amsgrad": True})
+        separate_unscale = (False, True)
+        for optim, kwargs, _separate_unscale in list(product(optimizer_ctor, optimizer_kwargs, separate_unscale)):
+            self._grad_scaling_autocast_fused_optimizers(
+                optimizer_ctor=optim, optimizer_kwargs=kwargs, separate_unscale=_separate_unscale)
+
+    def _grad_scaling_autocast_fused_optimizers(self, optimizer_ctor, optimizer_kwargs, separate_unscale):
+        (
+            mod_control, mod_scaling, opt_control, opt_scaling, data, loss_fn, _,
+        ) = _create_scaling_case(optimizer_ctor=optimizer_ctor, optimizer_kwargs=optimizer_kwargs, device='cpu')
+        kwargs = deepcopy(optimizer_kwargs)
+        kwargs["fused"] = False
+        opt_control = optimizer_ctor(mod_control.parameters(), lr=1.0, **kwargs)
+
+        scaler = torch.cpu.amp.GradScaler(init_scale=128.0)
+        for input, target in data:
+            opt_control.zero_grad()
+            with torch.autocast('cpu', dtype=torch.half):
+                output_control = mod_control(input)
+                loss_control = loss_fn(output_control, target)
+            scaler.scale(loss_control).backward()
+            scaler.step(opt_control)
+            scaler.update()
+
+            opt_scaling.zero_grad()
+            with torch.autocast('cpu', dtype=torch.half):
+                output_scaling = mod_scaling(input)
+                loss_scaling = loss_fn(output_scaling, target)
+            scaler.scale(loss_scaling).backward()
+            if separate_unscale:
+                scaler.unscale_(opt_scaling)
+            scaler.step(opt_scaling)
+            scaler.update()
+
+            self.assertEqual(loss_control, loss_scaling,)
+            for param_control, param_scaling in zip(mod_control.parameters(), mod_scaling.parameters()):
+                self.assertEqual(param_control.grad, param_scaling.grad,)
+                self.assertEqual(param_control, param_scaling,)
+
+                state_control, state_scaling = opt_control.state[param_control], opt_scaling.state[param_scaling]
+
+                for k in state_control:
+                    actual = state_scaling[k]
+                    if k == "step":
+                        actual = actual.squeeze()
+                    self.assertEqual(state_control[k], actual,)
 
     @onlyCUDA
     @optims([o for o in optim_db if "foreach" in o.supported_impls], dtypes=[torch.float32])
