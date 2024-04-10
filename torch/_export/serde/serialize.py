@@ -575,14 +575,14 @@ class GraphModuleSerializer:
                 serialized_args.append(
                     NamedArgument(
                         name=schema_arg.name,
-                        arg=self.serialize_input(kwargs[schema_arg.name]),
+                        arg=self.serialize_input(kwargs[schema_arg.name], schema_arg.type),
                     )
                 )
             elif not schema_arg.kwarg_only and i < len(args):
                 serialized_args.append(
                     NamedArgument(
                         name=schema_arg.name,
-                        arg=self.serialize_input(args[i]),
+                        arg=self.serialize_input(args[i], schema_arg.type),
                     )
                 )
             else:
@@ -623,7 +623,9 @@ class GraphModuleSerializer:
             and arg.name in self.graph_state.sym_bool_values
         )
 
-    def serialize_input(self, arg) -> Argument:
+    def serialize_input(
+        self, arg, arg_type: Optional[torch._C.Argument] = None
+    ) -> Argument:
         import torch._inductor.ir as inductor_ir
 
         inductor_tensor_buffers = (
@@ -691,6 +693,38 @@ class GraphModuleSerializer:
         elif arg is None:
             return Argument.create(as_none=())
         elif isinstance(arg, (list, tuple)):
+            if len(arg) == 0:
+                if arg_type is not None:
+                    if isinstance(arg_type, torch.OptionalType):
+                        arg_type = arg_type.getElementType()  # type: ignore[assignment]
+                    assert isinstance(arg_type, torch.ListType)
+                    elem_type = arg_type.getElementType()
+                    if isinstance(elem_type, torch.OptionalType):
+                        elem_type = elem_type.getElementType()
+
+                    if elem_type == bool:
+                        return Argument.create(as_bools=[])
+                    elif elem_type == int:
+                        return Argument.create(as_ints=[])
+                    elif elem_type == float:
+                        return Argument.create(as_floats=[])
+                    elif elem_type == str:
+                        return Argument.create(as_strings=[])
+                    elif isinstance(elem_type, torch.TensorType):
+                        return Argument.create(as_tensors=[])
+                    else:
+                        # I believe empty symint lists default to ints, but
+                        # please file an issue if this is not the case
+                        raise SerializeError(f"Empty list with type {elem_type} nyi.")
+                else:
+                    # We could serialize this to some default list, but for now
+                    # lets error and see if there are actually any serious use
+                    # cases for this
+                    raise SerializeError(
+                        "Unsure how to serialize the given empty list, "
+                        "as we don't know what is the type of this argument."
+                    )
+
             # Must check bool first, as bool is also treated as int
             if all(isinstance(a, bool) for a in arg):
                 return Argument.create(as_bools=list(arg))
