@@ -29,7 +29,6 @@ get_envs_from_vcvarsall() {
   fi
   source env.txt
   rm env.txt
-  popd
 }
 get_envs_from_vcvarsall
 
