@@ -1,4 +1,5 @@
 import collections
+import collections.abc
 import contextlib
 import copy
 import dataclasses
@@ -2671,7 +2672,10 @@ class InliningGeneratorInstructionTranslator(InliningInstructionTranslator):
         assert len(self.stack) >= 2
         val = self.pop()
         tos = self.stack[-1]
-        if isinstance(tos, ListIteratorVariable):
+        if isinstance(tos, ListIteratorVariable) or (
+            isinstance(tos, UserDefinedObjectVariable)
+            and isinstance(tos.value, collections.abc.Iterator)
+        ):
             if isinstance(val, ConstantVariable) and val.value is None:
                 try:
                     val = tos.next_variable(self)
