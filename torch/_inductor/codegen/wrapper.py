@@ -1,3 +1,4 @@
+import ast
 import collections
 import contextlib
 import dataclasses
@@ -1150,6 +1151,18 @@ class WrapperCodeGen(CodeGen):
         symbols_included = {original_name}
 
         def traverse(cur_kernel):
+            # here we extract the unqualified names (i.e., not attributes and
+            # without prepended module name) loaded in the kernel code, which
+            # are matched with the co_names and __globals__ below to codegen
+            # the respective imports necessary for the kernel compilation
+            unqualified_loads = {
+                node.id
+                for node in ast.walk(ast.parse(cur_kernel.src))
+                if isinstance(node, ast.Name)
+                and hasattr(node, "ctx")
+                and isinstance(node.ctx, ast.Load)
+                and hasattr(node, "id")
+            }
             for symbol_name in cur_kernel.fn.__code__.co_names:
                 if symbol_name in symbols_included:
                     continue
@@ -1164,6 +1177,22 @@ class WrapperCodeGen(CodeGen):
                     elif isinstance(symbol, (int, str, bool)):
                         compile_wrapper.newline()
                         compile_wrapper.writeline(f"{symbol_name} = {symbol!r}")
+                        symbols_included.add(symbol_name)
+                    elif (
+                        symbol_name in unqualified_loads
+                        and symbol_name != "tl"  # already imported
+                        and hasattr(symbol, "__module__")
+                        # only codegen imports from triton; JITFunctions
+                        # imported from other modules will be codegened
+                        # in the separate branch above
+                        and symbol.__module__.startswith("triton")
+                    ):
+                        # a global symbol imported from triton is referenced
+                        # without module qualification (i.e., `store` instead
+                        # of `tl.store`): need to codegen an import
+                        compile_wrapper.writeline(
+                            f"from {symbol.__module__} import {symbol.__name__} as {symbol_name}"
+                        )
                         symbols_included.add(symbol_name)
 
         traverse(kernel)
