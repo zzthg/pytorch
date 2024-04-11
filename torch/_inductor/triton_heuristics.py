@@ -147,6 +147,7 @@ class CachingAutotuner(KernelInterface):
         size_hints=None,
         inductor_meta=None,  # metadata not relevant to triton
         custom_kernel=False,  # whether the kernel is inductor-generated or custom
+        filename: Optional[str] = None,
     ):
         super().__init__()
 
@@ -176,7 +177,7 @@ class CachingAutotuner(KernelInterface):
             for c in self.configs:
                 log.debug(c)
 
-        self.launchers = []
+        self.launchers = []  # type: ignore[var-annotated]
         self.lock = threading.Lock()
         if os.getenv("TRITON_CACHE_DIR") is None:
             os.environ["TRITON_CACHE_DIR"] = os.path.join(
@@ -189,6 +190,7 @@ class CachingAutotuner(KernelInterface):
         self.coordesc_tuner = CoordescTuner(
             is_mm=False, name=self.fn.__name__, size_hints=size_hints
         )
+        self.filename = filename
 
     def precompile(self, warm_cache_only_with_cc=None):
         with self.lock:
@@ -733,8 +735,16 @@ class CachingAutotuner(KernelInterface):
         # it is faster than entering and exiting a context manager, even if the context
         # manager is a nullcontext.
         if autograd_profiler._is_profiler_enabled:
+            # grid can be a tuple of ints or a lambda.
+            # if it is a lambda, then it should have metadata associated that can be used
+            # to reconstruct the lambda.
+            grid_info = (
+                grid if isinstance(grid, tuple) else getattr(grid, "grid_args", None)
+            )
             with torch._C._profiler._RecordFunctionFast(
-                self.inductor_meta.get("kernel_name", "triton kernel"), args
+                self.inductor_meta.get("kernel_name", "triton kernel"),
+                args,
+                {"grid": grid_info, "filename": self.filename},
             ):
                 return launcher(
                     *args,
@@ -1026,6 +1036,7 @@ def cached_autotune(
                 heuristic_type=heuristic_type,
                 size_hints=size_hints,
                 custom_kernel=custom_kernel,
+                filename=filename,
             )
         return CachingAutotuner(
             fn,
@@ -1037,6 +1048,7 @@ def cached_autotune(
             heuristic_type=heuristic_type,
             size_hints=size_hints,
             custom_kernel=custom_kernel,
+            filename=filename,
         )
 
     return decorator
@@ -1602,6 +1614,8 @@ def grid(*numels):
             z_grid,
         )
 
+    grid_fn.grid_args = ("grid", *numels)  # type: ignore[attr-defined]
+
     return grid_fn
 
 
@@ -1609,5 +1623,7 @@ def split_scan_grid(xnumel, rnumel):
     def grid_fn(meta):
         assert meta.get("XBLOCK", 1) == 1
         return (ceildiv(rnumel, meta.get("RBLOCK", 1)), xnumel, 1)
+
+    grid_fn.grid_args = ("split_scan_grid", xnumel, rnumel)  # type: ignore[attr-defined]
 
     return grid_fn
