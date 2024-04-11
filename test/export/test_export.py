@@ -124,10 +124,15 @@ def foo_functional(x):
 
 
 NON_STRICT_SUFFIX = "_non_strict"
+RETRACEABILITY_SUFFIX = "_retraceability"
 
 
 def is_non_strict_test(test_name):
     return test_name.endswith(NON_STRICT_SUFFIX)
+
+
+def is_retracebility_test(test_name):
+    return test_name.endswith(RETRACEABILITY_SUFFIX)
 
 
 @unittest.skipIf(not torchdynamo.is_dynamo_supported(), "dynamo isn't support")
@@ -2104,7 +2109,6 @@ def forward(self, arg_0):
             )
         )
 
-    @testing.expectedFailureNonStrict  # non-strict does not add deferred runtime assertions
     @testing.expectedFailureSerDerPreDispatch  # .item call becomes aten.item in predispatch IR
     @testing.expectedFailurePreDispatchRunDecomp  # assert name is still referring to item
     def test_automatic_constrain_size(self):
@@ -2115,10 +2119,21 @@ def forward(self, arg_0):
 
         ep = export(M(), (torch.tensor(1), torch.ones(4, 5)))
 
-        with self.assertRaisesRegex(
-            RuntimeError,
-            r"_local_scalar_dense is outside of inline constraint \[0, 9223372036854775806\]",
-        ):
+        if is_non_strict_test(self._testMethodName):
+            error_msg = (
+                r"Runtime assertion failed for expression -u1 <= 0 on node 'le_1'\n"
+                r"More context: %mul : \[num_users=1\] = call_function\[target=operator.mul\]\(args = \(-1, %_local_scalar_dense\), kwargs = {}\)\n"
+                r"%le_1 : \[num_users=0\] = call_function\[target=operator.le\]\(args = \(%mul, 0\), kwargs = {}\)"
+            )
+        elif is_retracebility_test(self._testMethodName):
+            error_msg = (
+                r"Runtime assertion failed for expression -u0 <= 0 on node 'le_3'\n"
+                r"More context: %mul_1 : \[num_users=1\] = call_function\[target=operator.mul\]\(args = \(-1, %_local_scalar_dense_default\), kwargs = {}\)\n"
+                r"%le_3 : \[num_users=0\] = call_function\[target=operator.le\]\(args = \(%mul_1, 0\), kwargs = {}\)"
+            )
+        else:
+            error_msg = "_local_scalar_dense is outside of inline constraint \[0, 9223372036854775806\]."
+        with self.assertRaisesRegex(RuntimeError, error_msg):
             _ = ep.module()(torch.tensor(-1), torch.randn(4, 5))
 
         self.assertTrue(
