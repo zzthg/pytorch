@@ -134,6 +134,13 @@ class VecMask {
     return VectorizedN<T, N>(VectorizedN<T, N>::loadu(mask));
   }
 
+  void store(bool* b, int count) {
+    constexpr int L = (VectorizedN<T, N>::size() + Vectorized<bool>::size() - 1)/ Vectorized<bool>::size();
+    auto res = this->to<bool, L>();
+    res.store(b, count);
+    return;
+  }
+
   template <typename U, int L, std::enable_if_t<L >= 2, int> = 0>
   inline VectorizedN<U, L> to() const {
     return VecMaskTo<U, L, T, N>::apply(*this);

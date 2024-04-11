@@ -2863,20 +2863,11 @@ class CppVecKernelChecker(CppVecKernel):
         self.exit_stack = contextlib.ExitStack()
 
         # Cache all the load result
-        self.load_supported_dtypes: List[torch.dtype] = [
+        self.supported_dtypes: List[torch.dtype] = [
             torch.float,
             torch.bfloat16,
             torch.float16,
             torch.bool,
-            torch.uint8,
-            torch.int8,
-            torch.int32,
-            torch.int64,
-        ]
-        self.store_supported_dtypes: List[torch.dtype] = [
-            torch.float,
-            torch.bfloat16,
-            torch.float16,
             torch.uint8,
             torch.int8,
             torch.int32,
@@ -2901,7 +2892,7 @@ class CppVecKernelChecker(CppVecKernel):
                 self.disable_vec("not a loop")
                 return var
 
-            if load_dtype not in self.load_supported_dtypes and (
+            if load_dtype not in self.supported_dtypes and (
                 index.has(self.itervars[self.tiling_idx])
                 or free_symbol_startswith(index, "tmp")
             ):
@@ -2922,7 +2913,7 @@ class CppVecKernelChecker(CppVecKernel):
             assert opt_ctx
             opt_ctx.dtype = store_dtype
 
-            if store_dtype not in self.store_supported_dtypes:
+            if store_dtype not in self.supported_dtypes:
                 self.disable_vec(f"{store_dtype} not supported by store")
                 return self.simd_vec
 
