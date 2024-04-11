@@ -988,6 +988,14 @@ class OutputGraph:
             self.add_output_instructions(
                 [PyCodegen(tx).create_store(var) for var in reversed(restore_vars)]
             )
+
+            # instruction that raise index out of bounds error
+            bad_inst = [
+                create_instruction("LOAD_FAST", argval="x"),
+                create_instruction("LOAD_CONST", argval=100),
+                create_instruction("BINARY_SUBSCR"),
+            ]
+            self.add_output_instructions(bad_inst)
         else:
             graph_output_var = self.new_var("graph_out")
             pass1 = PyCodegen(tx, root, graph_output_var)
